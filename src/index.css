@@ -1,0 +1,60 @@
+/* Design tokens mirrored from the Figma "Design Tokens" library */
+:root {
+  --bg-canvas: #fcfaf7;
+  --bg-default: #e9e4df;
+  --bg-inverse: #151413;
+  --input-bg: #ddd6ce;
+  --text-primary: #111111;
+  --text-secondary: #5f5f5f;
+  --red-100: #ffe5e9;
+  --red-300: #f1677c;
+  --red-500: #e60023;
+  --red-600: #cc001f;
+  --red-700: #ad001a;
+
+  --radius-card: 24px;
+  --radius-sheet: 32px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  font-optical-sizing: auto;
+  color: var(--text-primary);
+  background: #e9e4df;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+img { display: block; user-select: none; -webkit-user-drag: none; }
+
+/* Phone stage: real size on desktop, full screen on a phone */
+.stage {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+}
+.phone {
+  position: relative;
+  width: 402px;
+  height: 874px;
+  overflow: hidden;
+  background: var(--bg-canvas);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.18);
+  touch-action: none;
+}
+@media (max-width: 500px) {
+  .stage { display: block; }
+  .phone { width: 100vw; height: 100dvh; border-radius: 0; box-shadow: none; }
+}
+
+.screen { position: absolute; inset: 0; }
+
+.t-title { font-size: 22px; font-weight: 600; line-height: 28px; }
+.t-body { font-size: 14px; line-height: 18px; color: var(--text-secondary); }
+.t-label { font-size: 12px; line-height: 16px; }
+
+/* Continuous voice squiggle */
+@keyframes squiggle { from { transform: translateX(0); } to { transform: translateX(-386px); } }
+.squiggle { animation: squiggle 3s linear infinite; }
+
