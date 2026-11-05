@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { PIN_PATH } from '../components/pin'
+import { asset } from '../components/asset'
 
 // Same slots and shuffle order as the "Loading Animation" component
 const SLOTS: [number, number][] = [[143, 198], [164, 620], [29, 79], [274, 121], [296, 458], [23, 543]]
@@ -62,7 +63,7 @@ export default function Loading({ onDone }: { onDone: () => void }) {
         return (
           <motion.img
             key={src}
-            src={`/img/${src}.png`}
+            src={asset(src)}
             alt=""
             initial={{ x, y, opacity: 0, scale: 0.8 }}
             animate={{ x, y, opacity: 1, scale: 1 }}

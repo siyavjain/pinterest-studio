@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { CloseIcon, SparkIcon } from '../components/Icons'
 import { Pill } from '../components/Button'
+import { asset } from '../components/asset'
 
 const PREVIEWS = ['p4-middle', 'p2-back', 'p5-middle']
 
@@ -38,7 +39,7 @@ export default function Recommendation({ onAdd, onDismiss }: { onAdd: (srcs: str
         {PREVIEWS.map((p, i) => (
           <motion.img
             key={p}
-            src={`/img/${p}.png`}
+            src={asset(p)}
             alt=""
             animate={{ x: added ? i * 48 : i * 30 }}
             transition={{ type: 'spring', stiffness: 260, damping: 22 }}

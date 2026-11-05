@@ -10,6 +10,7 @@ import Recommendation from '../board/Recommendation'
 import VoiceNote from '../board/VoiceNote'
 import { pinPattern } from '../components/pin'
 import { ORIGIN, WORLD, useCanvas } from '../board/useCanvas'
+import { asset } from '../components/asset'
 
 type Item = { id: string; src: string; x: number; y: number; w: number; h: number; z: number; merged?: [string, string] }
 type Group = { ids: string[]; name: string }
@@ -205,11 +206,11 @@ export default function Board({ onBack }: { onBack: () => void }) {
           >
             {it.merged ? (
               <div style={{ width: '100%', height: '100%', borderRadius: 20, overflow: 'hidden', position: 'relative', background: 'var(--bg-default)' }}>
-                <img src={`/img/${it.merged[0]}.png`} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                <img src={`/img/${it.merged[1]}.png`} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                <img src={asset(it.merged[0])} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={asset(it.merged[1])} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
               </div>
             ) : (
-              <img src={`/img/${it.src}.png`} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }} />
+              <img src={asset(it.src)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }} />
             )}
             <motion.div
               initial={false}
@@ -237,7 +238,7 @@ export default function Board({ onBack }: { onBack: () => void }) {
             {[merging.a, merging.b].map((it, k) => (
               <motion.img
                 key={it.id}
-                src={`/img/${it.src}.png`}
+                src={asset(it.src)}
                 alt=""
                 initial={{ x: it.x, y: it.y, width: it.w, height: it.h, opacity: 1 }}
                 animate={
@@ -252,8 +253,8 @@ export default function Board({ onBack }: { onBack: () => void }) {
             {merging.step === 'result' && (
               <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, ease }}>
                 <div style={{ position: 'absolute', left: 116, top: 250, width: 170, height: 220, borderRadius: 20, overflow: 'hidden', background: 'var(--bg-default)', boxShadow: '0 20px 40px rgba(0,0,0,.18)' }}>
-                  <img src={`/img/${merging.flip ? merging.b.src : merging.a.src}.png`} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <img src={`/img/${merging.flip ? merging.a.src : merging.b.src}.png`} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                  <img src={asset(merging.flip ? merging.b.src : merging.a.src)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={asset(merging.flip ? merging.a.src : merging.b.src)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
                 </div>
                 <div style={{ position: 'absolute', left: 0, right: 0, top: 486, textAlign: 'center' }}>
                   <span style={{ padding: '5px 10px', borderRadius: 999, background: 'var(--bg-inverse)', color: 'var(--bg-canvas)', fontSize: 12, fontWeight: 600 }}>Flower × Cap</span>
@@ -299,7 +300,7 @@ export default function Board({ onBack }: { onBack: () => void }) {
 
       <VoiceAssistant onCommand={onCommand} onUndo={undo} />
 
-      <ShareSheet open={shareOpen} onClose={() => setShareOpen(false)} cover="/img/p3-front.png" />
+      <ShareSheet open={shareOpen} onClose={() => setShareOpen(false)} cover={asset('p3-front')} />
       <ExploreSheet open={exploreOpen} onClose={() => setExploreOpen(false)} onAdd={(src) => addItems([src])} />
     </div>
   )

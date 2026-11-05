@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { ActionButton, IconButton } from '../components/Button'
 import { BackIcon } from '../components/Icons'
+import { asset } from '../components/asset'
 
 // Positions from the "Pin extration screen" frame
 const PINS = [
@@ -16,7 +17,7 @@ export default function Extract({ onBack, onExtract }: { onBack: () => void; onE
       {PINS.map((p, i) => (
         <motion.img
           key={p.src}
-          src={`/img/${p.src}.png`}
+          src={asset(p.src)}
           alt=""
           initial={{ opacity: 0, y: p.y + 60, scale: 0.94 }}
           animate={{ opacity: 1, y: p.y, scale: 1 }}

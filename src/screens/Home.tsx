@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { animate, motion, useMotionValue, useTransform } from 'framer-motion'
 import type { MotionValue, PanInfo } from 'framer-motion'
 import { ArrowUpIcon } from '../components/Icons'
+import { asset } from '../components/asset'
 
 type Project = { name: string; pins: string; creators: string; age: string; creator?: string; avatar?: string }
 
@@ -21,7 +22,7 @@ function Stack({ i, project, focused }: { i: number; project: Project; focused: 
   // Back / middle / front fanned exactly like the Figma stack (offsets relative to the 231×328 front card)
   const layer = (name: string, style: React.CSSProperties) => (
     <motion.img
-      src={`/img/p${i + 1}-${name}.png`}
+      src={asset(`p${i + 1}-${name}`)}
       alt=""
       style={{ position: 'absolute', borderRadius: 24, objectFit: 'cover', ...style }}
     />
@@ -31,7 +32,7 @@ function Stack({ i, project, focused }: { i: number; project: Project; focused: 
       {layer('back', { left: -6, top: -35, width: 255, height: 345, transform: 'rotate(4deg)' })}
       {layer('middle', { left: 5, top: -17, width: 244, height: 337, transform: 'rotate(-2deg)' })}
       <div style={{ position: 'absolute', inset: 0, borderRadius: 24, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,.12)' }}>
-        <img src={`/img/p${i + 1}-front.png`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img src={asset(`p${i + 1}-front`)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         {/* progressive blur + dark fade so the creator label always reads */}
         <div
           style={{
@@ -49,7 +50,7 @@ function Stack({ i, project, focused }: { i: number; project: Project; focused: 
             style={{ position: 'absolute', left: 12, bottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--bg-canvas)' }}
           >
             {project.avatar ? (
-              <img src={`/img/${project.avatar}.png`} alt="" style={{ width: 20, height: 20, borderRadius: 999 }} />
+              <img src={asset(project.avatar)} alt="" style={{ width: 20, height: 20, borderRadius: 999 }} />
             ) : (
               <span style={{ width: 20, height: 20, borderRadius: 999, background: 'var(--bg-default)' }} />
             )}

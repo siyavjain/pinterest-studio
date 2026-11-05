@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import Sheet from './Sheet'
 import { Pill } from '../components/Button'
 import { PlusIcon } from '../components/Icons'
+import { asset } from '../components/asset'
 
 const SIMILAR = [
   { src: 'p3-middle', h: 200 },
@@ -51,7 +52,7 @@ export default function ExploreSheet({ open, onClose, onAdd }: { open: boolean; 
                 const isAdded = added.includes(s.src)
                 return (
                   <div key={s.src} style={{ position: 'relative', breakInside: 'avoid', marginBottom: 8 }}>
-                    <img src={`/img/${s.src}.png`} alt="" style={{ width: '100%', height: s.h, objectFit: 'cover', borderRadius: 16 }} />
+                    <img src={asset(s.src)} alt="" style={{ width: '100%', height: s.h, objectFit: 'cover', borderRadius: 16 }} />
                     <motion.button
                       aria-label="Add to board"
                       whileTap={{ scale: 0.85 }}
@@ -89,7 +90,7 @@ export default function ExploreSheet({ open, onClose, onAdd }: { open: boolean; 
                 <div style={{ display: 'flex', gap: 10 }}>
                   {TEXTURES.map((t) => (
                     <div key={t.name} style={{ display: 'grid', gap: 6 }}>
-                      <img src={`/img/${t.src}.png`} alt="" style={{ width: 80, height: 80, borderRadius: 14, objectFit: 'cover', background: 'var(--bg-default)' }} />
+                      <img src={asset(t.src)} alt="" style={{ width: 80, height: 80, borderRadius: 14, objectFit: 'cover', background: 'var(--bg-default)' }} />
                       <span className="t-label" style={{ color: 'var(--text-secondary)' }}>{t.name}</span>
                     </div>
                   ))}

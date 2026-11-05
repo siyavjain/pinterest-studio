@@ -20,4 +20,4 @@ Open http://localhost:5173. Add `?screen=board` (or `extract`, `loading`) to jum
 
 ## Stack
 
-React, TypeScript, Vite and Framer Motion. Design tokens live in `src/index.css`. Images are in `public/img`.
+React, TypeScript, Vite and Framer Motion. Design tokens live in `src/index.css`. Images are in `public/home/assets` (home screen) and `public/img` (everything else).
