@@ -49,7 +49,11 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
   }
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId)
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      /* pointer already gone */
+    }
     x.stop()
     y.stop()
     moved.current = false
@@ -88,7 +92,8 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
   }
 
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    pointers.current.delete(e.pointerId)
+    // ignore releases that began on a piece (they bubble up here)
+    if (!pointers.current.delete(e.pointerId)) return
     if (pointers.current.size < 2) pinch.current = null
     if (pointers.current.size > 0) return
     if (!moved.current) {

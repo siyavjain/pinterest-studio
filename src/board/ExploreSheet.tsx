@@ -22,15 +22,21 @@ const TEXTURES = [
 ]
 const TYPE = ['Wavy ribbon type', 'Bold grotesk', 'Puffy blobs', 'Cut-out collage']
 
-export default function ExploreSheet({ open, onClose, onAdd }: { open: boolean; onClose: () => void; onAdd: (src: string) => void }) {
-  const [tab, setTab] = useState<'similar' | 'ingredients'>('similar')
+export default function ExploreSheet({ open, onClose, onAdd, subject = 'this board', initialTab = 'similar' }: {
+  open: boolean
+  onClose: () => void
+  onAdd: (src: string) => void
+  subject?: string
+  initialTab?: 'similar' | 'ingredients'
+}) {
+  const [tab, setTab] = useState<'similar' | 'ingredients'>(initialTab)
   const [added, setAdded] = useState<string[]>([])
 
   return (
     <Sheet open={open} onClose={onClose} height={620} handleOnly>
       <div style={{ padding: '14px 20px 0' }}>
         <div style={{ fontSize: 20, fontWeight: 600 }}>Explore</div>
-        <div className="t-body">12 more like “the flower”</div>
+        <div className="t-body">{tab === 'similar' ? `12 more like ${subject}` : `Pulled from ${subject}`}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
           <Pill label="Similar" selected={tab === 'similar'} onClick={() => setTab('similar')} />
           <Pill label="Ingredients" selected={tab === 'ingredients'} onClick={() => setTab('ingredients')} />

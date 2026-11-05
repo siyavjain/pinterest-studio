@@ -68,3 +68,6 @@ export const SparkIcon = ({ size = 16, color = 'currentColor' }: P) => (
 export const PlayIcon = ({ size = 14, color = 'currentColor' }: P) => (
   <svg {...base(size, color)} fill={color}><path d="M8 5.5v13l10-6.5z" /></svg>
 )
+export const TrashIcon = ({ size = 16, color = 'currentColor' }: P) => (
+  <svg {...base(size, color)}><path d="M4.5 7h15M10 7V5h4v2M6.5 7l.8 12a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12M10 11v6M14 11v6" /></svg>
+)

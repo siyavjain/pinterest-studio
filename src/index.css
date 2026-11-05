@@ -39,6 +39,7 @@ img { display: block; user-select: none; -webkit-user-drag: none; }
   width: 402px;
   height: 874px;
   overflow: hidden;
+  overflow: clip; /* never scrolls, even when something inside takes focus */
   background: var(--bg-canvas);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.18);
   touch-action: none;

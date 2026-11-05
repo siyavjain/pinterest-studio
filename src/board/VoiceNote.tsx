@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { PlayIcon } from '../components/Icons'
+import { PlayIcon, TrashIcon } from '../components/Icons'
 import Squiggle from './Squiggle'
 
 /** Board Note: a pinned avatar that opens into a voice note. */
-export default function VoiceNote({ x, y }: { x: number; y: number }) {
+export default function VoiceNote({ x, y, text, onDelete }: { x: number; y: number; text: string; onDelete: () => void }) {
   const [open, setOpen] = useState(true)
   const [playing, setPlaying] = useState(false)
 
@@ -41,8 +41,21 @@ export default function VoiceNote({ x, y }: { x: number; y: number }) {
           {open && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
               <div style={{ position: 'absolute', left: 42, top: 10, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>You · voice note</div>
-              <div style={{ position: 'absolute', left: 16, top: 44, width: 208, fontSize: 14, lineHeight: '19px' }}>
-                Love the grain on this flower. Keep the purple but make it softer.
+              <motion.button
+                aria-label="Delete note"
+                whileTap={{ scale: 0.9 }}
+                onClick={onDelete}
+                style={{ position: 'absolute', right: 8, top: 6, width: 28, height: 28, borderRadius: 999, display: 'grid', placeItems: 'center', color: 'var(--text-secondary)' }}
+              >
+                <TrashIcon />
+              </motion.button>
+              <div
+                style={{
+                  position: 'absolute', left: 16, top: 44, width: 208, fontSize: 14, lineHeight: '19px',
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                }}
+              >
+                {text}
               </div>
               <div style={{ position: 'absolute', left: 16, top: 100, width: 208, height: 36, borderRadius: 999, background: 'var(--input-bg)', display: 'flex', alignItems: 'center' }}>
                 <motion.button
