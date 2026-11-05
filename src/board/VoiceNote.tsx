@@ -1,31 +1,78 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { PlayIcon, TrashIcon } from '../components/Icons'
+import { PauseIcon, PlayIcon, TrashIcon } from '../components/Icons'
+import type { Recording } from './voice/useSpeech'
 import Squiggle from './Squiggle'
 
 /** Board Note: a pinned avatar that opens into a voice note. */
-export default function VoiceNote({ x, y, text, onDelete }: { x: number; y: number; text: string; onDelete: () => void }) {
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+
+/** Board Note: a pinned avatar that opens into a voice note you can play back. */
+export default function VoiceNote({ x, y, text, audio, onDelete, onMove }: {
+  x: number
+  y: number
+  text: string
+  audio?: Recording // the recorded voice; without it the note is read aloud
+  onDelete: () => void
+  onMove: (dx: number, dy: number) => void // window px; the board converts for zoom
+}) {
   const [open, setOpen] = useState(true)
   const [playing, setPlaying] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const player = useRef<HTMLAudioElement | null>(null)
+  const tick = useRef<ReturnType<typeof setInterval> | null>(null)
+  const length = audio?.seconds ?? Math.max(2, Math.round(text.split(/\s+/).length / 2.6))
+
+  const stop = () => {
+    player.current?.pause()
+    if (!audio) speechSynthesis.cancel()
+    if (tick.current) clearInterval(tick.current)
+    setPlaying(false)
+    setElapsed(0)
+  }
+
+  const play = () => {
+    if (playing) return stop()
+    setPlaying(true)
+    const began = performance.now()
+    tick.current = setInterval(() => setElapsed(Math.min(length, (performance.now() - began) / 1000)), 200)
+    if (audio) {
+      const a = (player.current ??= new Audio(audio.url))
+      a.currentTime = 0
+      a.onended = stop
+      a.play().catch(stop)
+    } else {
+      const u = new SpeechSynthesisUtterance(text)
+      u.onend = stop
+      speechSynthesis.cancel()
+      speechSynthesis.speak(u)
+    }
+  }
+
+  // stop sound if the note is deleted mid-play
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => stop, [])
 
   return (
     <motion.div
       onPointerDown={(e) => e.stopPropagation()}
-      drag
-      dragMomentum={false}
+      // moved like a board piece, so it stays under the finger at any zoom
+      onPan={(_, info) => onMove(info.delta.x, info.delta.y)}
       initial={{ scale: 0, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 300, damping: 24 }}
-      style={{ position: 'absolute', left: x, top: y, zIndex: 25, transformOrigin: '0 0' }}
+      style={{ position: 'absolute', left: x, top: y, zIndex: 25, transformOrigin: '0 0', touchAction: 'none', cursor: 'grab', userSelect: 'none', WebkitUserSelect: 'none' }}
     >
       <motion.div
-        layout
-        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-        style={{
+        initial={false}
+        animate={{
           width: open ? 240 : 36,
           height: open ? 150 : 36,
           borderRadius: open ? '6px 20px 20px 20px' : '6px 18px 18px 18px',
+        }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+        style={{
           background: 'var(--bg-canvas)',
           boxShadow: '0 6px 20px rgba(0,0,0,.12)',
           overflow: 'hidden',
@@ -61,16 +108,15 @@ export default function VoiceNote({ x, y, text, onDelete }: { x: number; y: numb
                 <motion.button
                   aria-label={playing ? 'Pause' : 'Play'}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => {
-                    setPlaying(true)
-                    setTimeout(() => setPlaying(false), 12000)
-                  }}
+                  onClick={play}
                   style={{ width: 28, height: 28, marginLeft: 4, borderRadius: 999, background: 'var(--bg-inverse)', color: 'var(--bg-canvas)', display: 'grid', placeItems: 'center', flexShrink: 0 }}
                 >
-                  <PlayIcon />
+                  {playing ? <PauseIcon /> : <PlayIcon />}
                 </motion.button>
                 <Squiggle width={130} height={26} strokeWidth={1.5} paused={!playing} />
-                <span className="t-label" style={{ color: 'var(--text-secondary)', marginLeft: 6 }}>0:12</span>
+                <span className="t-label" style={{ color: 'var(--text-secondary)', marginLeft: 6, fontVariantNumeric: 'tabular-nums' }}>
+                  {clock(playing ? length - elapsed : length)}
+                </span>
               </div>
             </motion.div>
           )}

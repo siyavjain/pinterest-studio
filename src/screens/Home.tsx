@@ -3,6 +3,7 @@ import { animate, motion, useMotionValue, useTransform } from 'framer-motion'
 import type { MotionValue, PanInfo } from 'framer-motion'
 import { ArrowUpIcon } from '../components/Icons'
 import { asset } from '../components/asset'
+import { getFit } from '../components/fit'
 
 type Project = { name: string; pins: string; creators: string; age: string; creator?: string; avatar?: string }
 
@@ -99,7 +100,8 @@ export default function Home({ onTake }: { onTake: () => void }) {
   const liftY = useMotionValue(0)
   const axis = useRef<'x' | 'y' | null>(null)
 
-  const onPan = (_: unknown, { offset }: PanInfo) => {
+  const onPan = (_: unknown, info: PanInfo) => {
+    const offset = { x: info.offset.x / getFit(), y: info.offset.y / getFit() }
     if (!axis.current) {
       if (Math.abs(offset.x) < 6 && Math.abs(offset.y) < 6) return
       axis.current = Math.abs(offset.x) > Math.abs(offset.y) ? 'x' : 'y'

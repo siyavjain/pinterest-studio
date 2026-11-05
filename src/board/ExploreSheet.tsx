@@ -4,21 +4,17 @@ import Sheet from './Sheet'
 import { Pill } from '../components/Button'
 import { PlusIcon } from '../components/Icons'
 import { asset } from '../components/asset'
+import { FINDS } from './ingredients'
 
-const SIMILAR = [
-  { src: 'p3-middle', h: 200 },
-  { src: 'p2-front', h: 150 },
-  { src: 'p5-middle', h: 120 },
-  { src: 'p4-back', h: 140 },
-  { src: 'p1-front', h: 190 },
-  { src: 'p5-front', h: 130 },
-]
+// pins that match the moodboard, nature ads woven between your finds; each extracts to its cut-out and colours
+const SIMILAR = ['be-with-nature', 'poppy', 'touch-grass', 'wanderlust', 'carrots', 'gardener', 'tree-hand', 'traffic', 'lamb', 'peony', 'head-hill', 'take-a-sit', 'let-nature-in']
+  .map((id) => ({ src: FINDS[id].photo, h: Math.round(185 / FINDS[id].photoAspect) }))
 const COLOURS = ['#7B5CFF', '#C8F02E', '#F4A6C4', '#FF7A3D', '#3E5C2A', '#1E1E1E']
 const TEXTURES = [
-  { name: 'Grain', src: 'p4-middle' },
   { name: 'Gloss', src: 'board-gradient' },
-  { name: 'Paper', src: 'p2-back' },
-  { name: 'Grass', src: 'p3-front' },
+  { name: 'Meadow', src: 'board-meadow' },
+  { name: 'Hill', src: 'board-hill' },
+  { name: 'Bloom', src: 'board-bloom' },
 ]
 const TYPE = ['Wavy ribbon type', 'Bold grotesk', 'Puffy blobs', 'Cut-out collage']
 
@@ -36,7 +32,7 @@ export default function ExploreSheet({ open, onClose, onAdd, subject = 'this boa
     <Sheet open={open} onClose={onClose} height={620} handleOnly>
       <div style={{ padding: '14px 20px 0' }}>
         <div style={{ fontSize: 20, fontWeight: 600 }}>Explore</div>
-        <div className="t-body">{tab === 'similar' ? `12 more like ${subject}` : `Pulled from ${subject}`}</div>
+        <div className="t-body">{tab === 'similar' ? `${SIMILAR.length} more like ${subject}` : `Pulled from ${subject}`}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
           <Pill label="Similar" selected={tab === 'similar'} onClick={() => setTab('similar')} />
           <Pill label="Ingredients" selected={tab === 'ingredients'} onClick={() => setTab('ingredients')} />

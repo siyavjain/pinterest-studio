@@ -71,3 +71,6 @@ export const PlayIcon = ({ size = 14, color = 'currentColor' }: P) => (
 export const TrashIcon = ({ size = 16, color = 'currentColor' }: P) => (
   <svg {...base(size, color)}><path d="M4.5 7h15M10 7V5h4v2M6.5 7l.8 12a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12M10 11v6M14 11v6" /></svg>
 )
+export const PauseIcon = ({ size = 14, color = 'currentColor' }: P) => (
+  <svg {...base(size, color)} fill={color}><rect x="6.5" y="5.5" width="3.5" height="13" rx="1" /><rect x="14" y="5.5" width="3.5" height="13" rx="1" /></svg>
+)

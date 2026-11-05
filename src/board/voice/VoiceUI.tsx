@@ -1,8 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { AnimatePresence, motion, useTransform } from 'framer-motion'
-import type { MotionValue } from 'framer-motion'
-import { DotsIcon, MicIcon } from '../../components/Icons'
+import { AnimatePresence, motion } from 'framer-motion'
+import { DotsIcon, MicIcon, TrashIcon } from '../../components/Icons'
 import { Pill } from '../../components/Button'
 import { asset } from '../../components/asset'
 import Squiggle from '../Squiggle'
@@ -103,81 +102,103 @@ export function HoldTip({ show, children, align = 'right' }: { show: boolean; ch
   )
 }
 
-/* ------------------------------------------------------- selection bar */
+/* ---------------------------------------------------------------- dock */
 
-type Rect = { x: number; y: number; w: number; h: number } // board coords
-
-/** Floats next to the selected pieces: mic + suggestions. Follows pan and zoom. */
-export function SelectionBar({
-  rect, origin, panX, panY, scale, viewport, suggestions, onSuggest, mic, tip, tipText, active,
-}: {
-  rect: Rect
-  origin: number
-  panX: MotionValue<number>
-  panY: MotionValue<number>
-  scale: MotionValue<number>
-  viewport: { w: number; h: number }
+/**
+ * Bottom-right, always in the same place. Nothing selected: just the mic.
+ * Something selected: the mic opens into a bar with suggestions and delete.
+ */
+export function Dock({ open, suggestions, onSuggest, onDelete, mic, tip, tipText, active }: {
+  open: boolean
   suggestions: Suggestion[]
   onSuggest: (s: Suggestion) => void
+  onDelete: () => void
   mic: ReactNode
   tip: boolean
   tipText?: string
   active?: string // label of the suggestion currently in use
 }) {
-  const ref = useRef<HTMLDivElement>(null)
   const chips = useRef<HTMLDivElement>(null)
-  const [w, setW] = useState(300)
-  const [overflow, setOverflow] = useState(false)
-  useLayoutEffect(() => {
-    if (ref.current) setW(ref.current.offsetWidth)
-    if (chips.current) setOverflow(chips.current.scrollWidth > chips.current.clientWidth + 1)
-  }, [suggestions, viewport.w])
+  const [fade, setFade] = useState({ left: false, right: false })
+  const drag = useRef<{ x: number; scroll: number; moved: boolean } | null>(null)
 
-  const left = useTransform(() => {
-    const cx = (origin + rect.x + rect.w / 2) * scale.get() + panX.get()
-    return Math.max(8, Math.min(viewport.w - w - 8, cx - w / 2)) // never past either edge
-  })
-  const top = useTransform(() => {
-    const s = scale.get()
-    const above = (origin + rect.y) * s + panY.get() - 64
-    const below = (origin + rect.y + rect.h) * s + panY.get() + 12
-    const y = above > 124 ? above : below
-    return Math.min(viewport.h - 190, Math.max(124, y))
-  })
+  const measure = () => {
+    const c = chips.current
+    if (c) setFade({ left: c.scrollLeft > 2, right: c.scrollLeft + c.clientWidth < c.scrollWidth - 2 })
+  }
+  useLayoutEffect(measure, [suggestions, open])
+
+  const mask = `linear-gradient(to right, ${fade.left ? 'transparent, black 20px' : 'black'}, ${fade.right ? 'black calc(100% - 20px), transparent' : 'black'})`
 
   return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ duration: 0.3, ease }}
+    <div
       onPointerDown={(e) => e.stopPropagation()}
-      style={{
-        position: 'absolute', left, top, zIndex: 45, display: 'flex', alignItems: 'center', gap: 6,
-        maxWidth: viewport.w - 16, padding: 6, borderRadius: 999, background: 'var(--bg-canvas)', boxShadow: '0 10px 30px rgba(0,0,0,.14)',
-      }}
+      style={{ position: 'absolute', left: 8, right: 8, bottom: 118, zIndex: 47, display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none' }}
     >
-      <div style={{ position: 'relative' }}>
-        {mic}
-        <HoldTip show={tip} align="left">{tipText ?? 'Hold and say what to do'}</HoldTip>
-      </div>
-      {/* suggestions scroll sideways if they don't fit; the mic always stays whole */}
-      <div
-        ref={chips}
+      <motion.div
+        layout
+        transition={{ duration: 0.35, ease }}
         style={{
-          display: 'flex', gap: 6, minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none', borderRadius: 999,
-          ...(overflow && {
-            maskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent)',
-            WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent)',
-          }),
+          display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%', pointerEvents: 'auto',
+          padding: open ? 6 : 0, borderRadius: 999,
+          background: open ? 'var(--bg-canvas)' : 'transparent', boxShadow: open ? '0 10px 30px rgba(0,0,0,.14)' : 'none',
         }}
       >
-        {suggestions.map((s) => (
-          <Pill key={s.label} label={s.label} selected={s.label === active} onClick={() => onSuggest(s)} style={{ flexShrink: 0 }} />
-        ))}
-      </div>
-    </motion.div>
+        <AnimatePresence initial={false}>
+          {open && (
+            <motion.div
+              key="actions"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.1 } }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}
+            >
+              <motion.button
+                aria-label="Delete"
+                whileTap={{ scale: 0.9 }}
+                onClick={onDelete}
+                style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 999, display: 'grid', placeItems: 'center', background: 'var(--bg-default)', color: 'var(--text-primary)' }}
+              >
+                <TrashIcon size={18} />
+              </motion.button>
+              {/* suggestions scroll sideways: swipe, trackpad, or drag with a mouse */}
+              <div
+                ref={chips}
+                data-scroll
+                onScroll={measure}
+                onWheel={(e) => {
+                  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY // a plain mouse wheel scrolls sideways too
+                }}
+                onPointerDown={(e) => {
+                  if (e.pointerType === 'mouse') drag.current = { x: e.clientX, scroll: e.currentTarget.scrollLeft, moved: false }
+                }}
+                onPointerMove={(e) => {
+                  if (!drag.current) return
+                  const dx = e.clientX - drag.current.x
+                  if (Math.abs(dx) > 4) drag.current.moved = true
+                  e.currentTarget.scrollLeft = drag.current.scroll - dx
+                }}
+                onPointerUp={() => setTimeout(() => (drag.current = null))}
+                onPointerLeave={() => (drag.current = null)}
+                onClickCapture={(e) => drag.current?.moved && e.stopPropagation()} // a drag isn't a tap
+                style={{
+                  display: 'flex', gap: 6, minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none',
+                  touchAction: 'pan-x', overscrollBehavior: 'contain', maskImage: mask, WebkitMaskImage: mask,
+                }}
+              >
+                {suggestions.map((s) => (
+                  <Pill key={s.label} label={s.label} selected={s.label === active} onClick={() => onSuggest(s)} style={{ flexShrink: 0 }} />
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <motion.div layout="position" style={{ position: 'relative', flexShrink: 0 }}>
+          {mic}
+          <HoldTip show={tip}>{tipText}</HoldTip>
+        </motion.div>
+      </motion.div>
+    </div>
   )
 }
 
@@ -267,11 +288,35 @@ export function Answer({ heard, text, onClose }: { heard: string; text: string; 
   )
 }
 
-export function Confirm({ heard, title, thumbs, onCancel, onConfirm }: { heard: string; title: string; thumbs: string[]; onCancel: () => void; onConfirm: () => void }) {
+export function Confirm({ heard, title, thumbs, name, onCancel, onConfirm }: {
+  heard: string
+  title: string
+  thumbs: string[]
+  name?: string // when set, a name field to edit before confirming
+  onCancel: () => void
+  onConfirm: (name?: string) => void
+}) {
+  const [typed, setTyped] = useState(name ?? '')
+  const confirm = () => onConfirm(name === undefined ? undefined : typed)
   return (
     <motion.div key="confirm" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }} transition={{ duration: 0.35, ease }} style={{ ...card, padding: '16px 18px' }}>
       <div className="t-label" style={{ color: 'var(--text-secondary)' }}>“{heard}”</div>
       <div style={{ marginTop: 6, fontSize: 18, fontWeight: 600 }}>{title}</div>
+      {name !== undefined && (
+        <input
+          aria-label="Group name"
+          value={typed}
+          maxLength={28}
+          placeholder={name}
+          onChange={(e) => setTyped(e.target.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation() // Backspace here shouldn't delete pieces
+            if (e.key === 'Enter') confirm()
+          }}
+          onFocus={(e) => e.currentTarget.select()}
+          style={{ width: '100%', height: 40, marginTop: 10, padding: '0 14px', borderRadius: 999, border: 'none', outline: 'none', background: 'var(--input-bg)', fontSize: 15, fontWeight: 600, fontFamily: 'inherit', color: 'var(--text-primary)' }}
+        />
+      )}
       <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
         {thumbs.slice(0, 6).map((t, i) => (
           <img key={t + i} src={asset(t)} alt="" style={{ width: 44, height: 44, objectFit: 'contain', borderRadius: 10, background: 'var(--bg-default)' }} />
@@ -279,7 +324,7 @@ export function Confirm({ heard, title, thumbs, onCancel, onConfirm }: { heard: 
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
         <Pill label="Cancel" onClick={onCancel} />
-        <Pill label="Do it" selected onClick={onConfirm} />
+        <Pill label={name !== undefined ? 'Group' : 'Do it'} selected onClick={confirm} />
       </div>
     </motion.div>
   )

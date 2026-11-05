@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import { animate, useMotionValue } from 'framer-motion'
+import { getFit } from '../components/fit'
 
 /** Size of the freeform board, and where the original 402×874 layout sits inside it. */
 export const WORLD = 3000
@@ -23,9 +24,11 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
   const moved = useRef(false)
 
   const rect = () => viewport.current!.getBoundingClientRect()
+  // the viewport's own size, unaffected by the phone being scaled to fit the window
+  const size = () => ({ width: viewport.current!.offsetWidth, height: viewport.current!.offsetHeight })
 
   const bounds = (s: number) => {
-    const r = rect()
+    const r = size()
     return { minX: r.width - WORLD * s, minY: r.height - WORLD * s }
   }
 
@@ -45,7 +48,8 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
 
   const local = (e: { clientX: number; clientY: number }) => {
     const r = rect()
-    return { x: e.clientX - r.left, y: e.clientY - r.top }
+    const k = getFit()
+    return { x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k }
   }
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -113,13 +117,14 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
     const el = viewport.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
+      if ((e.target as Element).closest?.('[data-scroll]')) return // let rows of chips scroll themselves
       e.preventDefault()
       x.stop()
       y.stop()
       if (e.ctrlKey) {
         const p = local(e)
         zoomAt(p.x, p.y, scale.get() * Math.exp(-e.deltaY * 0.01))
-      } else set(x.get() - e.deltaX, y.get() - e.deltaY)
+      } else set(x.get() - e.deltaX / getFit(), y.get() - e.deltaY / getFit())
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
@@ -134,11 +139,22 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
 
   /** board coords of the middle of the current view */
   const viewCentre = () => {
-    const r = rect()
+    const r = size()
     return {
       x: (r.width / 2 - x.get()) / scale.get() - ORIGIN,
       y: (r.height / 2 - y.get()) / scale.get() - ORIGIN,
     }
+  }
+
+  /** glide so board point (bx, by) sits in the middle of the view */
+  const panTo = (bx: number, by: number) => {
+    const r = size()
+    const s = scale.get()
+    const { minX, minY } = bounds(s)
+    const clamp = (v: number, min: number) => Math.min(0, Math.max(min, v))
+    const ease = { duration: 0.7, ease: [0.22, 1, 0.36, 1] } as const
+    animate(x, clamp(r.width / 2 - (ORIGIN + bx) * s, minX), ease)
+    animate(y, clamp(r.height / 2 - (ORIGIN + by) * s, minY), ease)
   }
 
   return {
@@ -147,6 +163,7 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
     scale,
     toScreen,
     viewCentre,
+    panTo,
     handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp },
   }
 }

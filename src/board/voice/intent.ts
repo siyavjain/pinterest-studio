@@ -9,6 +9,7 @@ export type Intent =
   | { kind: 'similar' }
   | { kind: 'colours' }
   | { kind: 'share' }
+  | { kind: 'delete' }
   | { kind: 'unclear' }
 
 export type Suggestion = { label: string; phrase: string }
@@ -59,11 +60,14 @@ export function suggestionsFor(count: number): Suggestion[] {
 // Commands start with a doing word ("merge…", "find…", "can you group…").
 // Anything else ("love the texture on this") is a thought, so it's offered as a note.
 const POLITE = /^(hey studio[,]?\s+|please\s+|can you\s+|could you\s+|let'?s\s+|i want to\s+|i'?d like to\s+)+/
-const VERBS = /^(merge|combine|blend|mix|mash|group|cluster|organi[sz]e|sort|put|add|note|remember|comment|remind|pull|extract|show|find|search|explore|get|give|what|which|how)\b/
+const VERBS = /^(delete|remove|bin|trash|merge|combine|blend|mix|mash|group|cluster|organi[sz]e|sort|put|add|note|remember|comment|remind|pull|extract|show|find|search|explore|get|give|what|which|how)\b/
 
 export function parse(raw: string): Intent {
   const t = raw.toLowerCase().trim()
-  if (!VERBS.test(t.replace(POLITE, ''))) return { kind: 'unclear' }
+  const lead = t.replace(POLITE, '')
+  if (!VERBS.test(lead)) return { kind: 'unclear' }
+  // only when it leads, so "add a note: remove the background" stays a note
+  if (/^(delete|remove|bin|trash|get rid)\b/.test(lead)) return { kind: 'delete' }
   if (/\b(merge|combine|blend|mix|mash)\b/.test(t)) return { kind: 'merge' }
   if (/\b(group|cluster|organi[sz]e|sort)\b|put .* together/.test(t)) {
     if (/colou?r/.test(t)) return { kind: 'groupByColour' }
@@ -84,4 +88,4 @@ const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase())
 const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** Actions that rearrange the board get a preview first. */
-export const needsConfirm = (i: Intent) => i.kind === 'group' || i.kind === 'groupByColour'
+export const needsConfirm = (i: Intent) => i.kind === 'group' || i.kind === 'groupByColour' || i.kind === 'delete'
