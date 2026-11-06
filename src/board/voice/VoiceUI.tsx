@@ -74,7 +74,7 @@ export function Mic({ size = 56, holding, onHoldStart, onHoldEnd, onArm }: MicPr
           transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
-      <MicIcon size={size > 48 ? 24 : 20} />
+      <MicIcon size={size > 48 ? 24 : size > 32 ? 20 : 14} />
     </motion.button>
   )
 }

@@ -9,6 +9,7 @@ export type Intent =
   | { kind: 'similar' }
   | { kind: 'colours' }
   | { kind: 'share' }
+  | { kind: 'direction' }
   | { kind: 'delete' }
   | { kind: 'unclear' }
 
@@ -43,6 +44,7 @@ export function suggestionsFor(count: number): Suggestion[] {
     return [
       { label: 'More inspiration', phrase: 'Find more inspiration for this board' },
       { label: 'Group by colour', phrase: 'Group everything by colour' },
+      { label: 'Direction card', phrase: 'Make a direction card for this board' },
     ]
   if (count === 1)
     return [
@@ -60,7 +62,7 @@ export function suggestionsFor(count: number): Suggestion[] {
 // Commands start with a doing word ("merge…", "find…", "can you group…").
 // Anything else ("love the texture on this") is a thought, so it's offered as a note.
 const POLITE = /^(hey studio[,]?\s+|please\s+|can you\s+|could you\s+|let'?s\s+|i want to\s+|i'?d like to\s+)+/
-const VERBS = /^(delete|remove|bin|trash|merge|combine|blend|mix|mash|group|cluster|organi[sz]e|sort|put|add|note|remember|comment|remind|pull|extract|show|find|search|explore|get|give|what|which|how)\b/
+const VERBS = /^(delete|remove|bin|trash|merge|combine|blend|mix|mash|group|cluster|organi[sz]e|sort|put|add|note|remember|comment|remind|pull|extract|show|find|search|explore|get|give|what|which|how|make|create|summari[sz]e|wrap|done|finish)\b/
 
 export function parse(raw: string): Intent {
   const t = raw.toLowerCase().trim()
@@ -68,6 +70,7 @@ export function parse(raw: string): Intent {
   if (!VERBS.test(lead)) return { kind: 'unclear' }
   // only when it leads, so "add a note: remove the background" stays a note
   if (/^(delete|remove|bin|trash|get rid)\b/.test(lead)) return { kind: 'delete' }
+  if (/\b(direction|summar|wrap (it )?up|done|finish)/.test(t)) return { kind: 'direction' }
   if (/\b(merge|combine|blend|mix|mash)\b/.test(t)) return { kind: 'merge' }
   if (/\b(group|cluster|organi[sz]e|sort)\b|put .* together/.test(t)) {
     if (/colou?r/.test(t)) return { kind: 'groupByColour' }

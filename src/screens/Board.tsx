@@ -10,17 +10,22 @@ import type { Recording } from '../board/voice/useSpeech'
 import ShareSheet from '../board/ShareSheet'
 import ExploreSheet from '../board/ExploreSheet'
 import Recommendation from '../board/Recommendation'
+import DirectionCard from '../board/DirectionCard'
+import { loadDirection, saveDirection } from '../board/directions'
 import VoiceNote from '../board/VoiceNote'
+import PieceContent from '../board/Piece'
+import type { Part } from '../board/Piece'
+import type { Reply } from '../board/VoiceNote'
 import { pinPattern } from '../components/pin'
 import { ORIGIN, WORLD, useCanvas } from '../board/useCanvas'
 import { asset } from '../components/asset'
 import { getFit } from '../components/fit'
-import { FINDS, INGREDIENTS, POST_ASPECT, RADIUS, cutAspect, findByPhoto } from '../board/ingredients'
+import { FINDS, INGREDIENTS, POST_ASPECT, cutAspect, findByPhoto } from '../board/ingredients'
 import type { Find, Shape } from '../board/ingredients'
 
 type Item = {
   id: string; src: string; x: number; y: number; w: number; h: number; z: number
-  merged?: [string, string]
+  parts?: Part[] // a merge: the pieces it was made from, placed inside its box
   label?: string // ingredients pulled from a post name themselves
   crop?: { box: [number, number, number, number]; shape: Shape } // part of src, cut to a shape
   colour?: string // a colour chip
@@ -40,7 +45,21 @@ const FRAMES = {
 } as const
 type FrameColour = keyof typeof FRAMES
 const FRAME_FOR: Record<string, FrameColour> = { green: 'green', pink: 'red', purple: 'purple', neutral: 'ink' }
-type Note = { id: string; x: number; y: number; text: string; audio?: Recording }
+type Note = {
+  id: string; x: number; y: number; text: string; audio?: Recording
+  replies: Reply[]
+  recordingBy?: string // who is recording a reply to it right now
+  teammates: number // simulated replies it has had, so the chatter stops
+}
+
+// What teammates say back, in turn. A stand-in for other people on the shared board.
+const TEAM = ['Maya', 'Jules', 'Ren']
+const TEAM_LINES = [
+  'Yes! Pair it with the lime type, it needs that pop.',
+  'Agree. Could we try it on the warm pink instead?',
+  'Love this. Pulling a few more like it into Explore.',
+  'Keep it soft, but bump the grain a little.',
+]
 type Snapshot = { items: Item[]; groups: Group[]; notes: Note[] }
 
 // Cut-outs exactly where they sit on the "Studio ads workspace" frame (full, uncropped)
@@ -89,7 +108,41 @@ function bounds(items: Item[]) {
   return { x, y, w: r - x, h: b - y }
 }
 
-export default function Board({ onBack }: { onBack: () => void }) {
+// How merged pieces sit together. Each "Try again" moves on: every piece gets a turn as
+// the hero, then the next arrangement.
+const ARRANGE = ['overlap', 'stack', 'orbit'] as const
+const MERGE_H = 200 // the hero's height in a merge
+
+/** Parts for a merge of these pieces, as boxes around (0, 0). */
+function mergeLayout(pieces: Item[], variant: number): Part[] {
+  const n = pieces.length
+  const heroAt = variant % n
+  const arrange = ARRANGE[Math.floor(variant / n) % ARRANGE.length]
+  const order = [...pieces.slice(heroAt), ...pieces.slice(0, heroAt)]
+  const sized = (it: Item, h: number) => (it.colour ? { w: 44, h: 44 } : { w: (it.w / it.h) * h, h })
+  const [hero, ...rest] = order
+  const H = sized(hero, MERGE_H)
+  const box = (it: Item, cx: number, cy: number, h: number, r: number): Part => {
+    const s = sized(it, h)
+    return { id: it.id, src: it.src, label: it.label, crop: it.crop, colour: it.colour, parts: it.parts, x: cx - s.w / 2, y: cy - s.h / 2, w: s.w, h: s.h, r }
+  }
+  const others = rest.map((it, k) => {
+    if (arrange === 'overlap') return box(it, H.w * 0.4 + k * 26, H.h * 0.18 + k * 30, MERGE_H * 0.72, 7 - k * 5)
+    if (arrange === 'stack') return box(it, (k % 2 ? -1 : 1) * H.w * 0.18, H.h * (0.42 + k * 0.36), MERGE_H * 0.66, k % 2 ? -6 : 5)
+    const a = [-0.75, 2.4, 0.75, -2.4][k % 4] // orbit: small pieces at the corners
+    return box(it, Math.cos(a) * H.w * 0.55, Math.sin(a) * H.h * 0.55, MERGE_H * 0.48, k % 2 ? -8 : 8)
+  })
+  const parts = [box(hero, 0, 0, MERGE_H, arrange === 'overlap' ? -4 : 0), ...others]
+  // centre the whole thing on (0, 0)
+  const l = Math.min(...parts.map((p) => p.x)), r = Math.max(...parts.map((p) => p.x + p.w))
+  const t = Math.min(...parts.map((p) => p.y)), b = Math.max(...parts.map((p) => p.y + p.h))
+  return parts.map((p) => ({ ...p, x: p.x - (l + r) / 2, y: p.y - (t + b) / 2 }))
+}
+
+// the board's project in the Studio library, where its direction card is kept
+const PROJECT = 'Ads'
+
+export default function Board({ onBack, openDirection = false }: { onBack: () => void; openDirection?: boolean }) {
   const [items, setItems] = useState<Item[]>(START)
   const [groups, setGroups] = useState<Group[]>([])
   const [notes, setNotes] = useState<Note[]>([])
@@ -99,7 +152,10 @@ export default function Board({ onBack }: { onBack: () => void }) {
   const lastExplore = useRef({ subject: 'this board', tab: 'similar' as 'similar' | 'ingredients' })
   if (explore) lastExplore.current = explore // keep content while the sheet slides away
   const [rec, setRec] = useState(false)
-  const [merging, setMerging] = useState<null | { a: Item; b: Item; ids: [string, string]; step: 'fly' | 'result'; flip: boolean }>(null)
+  // a merge being tried out on the board, centred on `at`, before it's kept
+  const [merging, setMerging] = useState<null | { ids: string[]; pieces: Item[]; at: { x: number; y: number }; variant: number }>(null)
+  const [direction, setDirection] = useState(openDirection) // the board summed up into a direction card
+  const [savedDirection, setSavedDirection] = useState(() => loadDirection(PROJECT))
   const [dragging, setDragging] = useState<string | null>(null)
   const [movingGroup, setMovingGroup] = useState<string | null>(null) // key of the frame being dragged
   const [palette, setPalette] = useState<string | null>(null) // key of the frame showing colour swatches
@@ -122,6 +178,8 @@ export default function Board({ onBack }: { onBack: () => void }) {
   useEffect(() => setNoteMode(false), [selected])
   const [slot, setSlot] = useState<'top' | 'bottom'>('bottom') // keep voice cards off the selection
   const targets = useRef<string[]>([]) // what "these" meant when the hold started
+  const replyTo = useRef<string | null>(null) // the note a hold is replying to
+  const notesMade = useRef(0) // varies what teammates say from note to note
   const lastAudio = useRef<Recording | undefined>(undefined) // the sound of the last hold, kept for notes
   const press = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPress = useRef(false)
@@ -245,36 +303,75 @@ export default function Board({ onBack }: { onBack: () => void }) {
     setSelected([])
   }
 
+  // the pieces fly together where they are; nothing covers the board
   const doMerge = (ids: string[]) => {
-    const [a, b] = ids.map(byId)
-    // fly from where the pieces sit on screen right now
-    const at = (it: Item) => {
-      const p = canvas.toScreen(it.x, it.y)
-      const s = canvas.scale.get()
-      return { ...it, x: p.x, y: p.y, w: it.w * s, h: it.h * s }
+    const pieces = ids.map(byId)
+    const at = {
+      x: pieces.reduce((n, i) => n + i.x + i.w / 2, 0) / pieces.length,
+      y: pieces.reduce((n, i) => n + i.y + i.h / 2, 0) / pieces.length,
     }
-    setMerging({ a: at(a), b: at(b), ids: [a.id, b.id], step: 'fly', flip: false })
+    setMerging({ ids, pieces, at, variant: 0 })
     setSelected([])
-    setTimeout(() => setMerging((m) => m && { ...m, step: 'result' }), 900)
+    canvas.panTo(at.x, at.y + 50) // room for the buttons underneath
   }
+
+  const mergeName = (pieces: Item[]) => (pieces.length === 2 ? `${nameOf(pieces[0])} × ${nameOf(pieces[1])}` : `${pieces.length} pieces`)
 
   const keepMerge = () => {
     if (!merging) return
     snapshot()
+    const parts = mergeLayout(merging.pieces, merging.variant)
+    const l = Math.min(...parts.map((p) => p.x)), t = Math.min(...parts.map((p) => p.y))
+    const w = Math.max(...parts.map((p) => p.x + p.w)) - l, h = Math.max(...parts.map((p) => p.y + p.h)) - t
     const id = `merge-${Date.now()}`
-    const c = canvas.viewCentre()
-    setItems((list) => [...list, { id, src: merging.a.src, merged: [merging.a.src, merging.b.src], x: c.x - 85, y: c.y - 110, w: 170, h: 220, z: ++zTop.current }])
+    const label = mergeName(merging.pieces)
+    const made: Item = {
+      id, src: merging.pieces[0].src, label, x: merging.at.x + l, y: merging.at.y + t, w, h, z: ++zTop.current,
+      parts: parts.map((p) => ({ ...p, x: p.x - l, y: p.y - t })),
+    }
+    // the pieces become the merge
+    setItems((list) => [...list.filter((i) => !merging.ids.includes(i.id)), made])
+    setGroups((g) => g.map((x) => ({ ...x, ids: x.ids.filter((i) => !merging.ids.includes(i)) })).filter((x) => x.ids.length > 1))
     setMerging(null)
-    setPhase({ k: 'done', text: `Merged ${nameOf(merging.a)} × ${nameOf(merging.b)}`, undo: true })
+    setPhase({ k: 'done', text: `Merged ${label}`, undo: true })
   }
 
   const doNote = (id: string | undefined, text: string) => {
     snapshot()
     const c = canvas.viewCentre()
     const f = id ? byId(id) : null
-    const at = f ? { x: f.x + f.w - 24, y: f.y - 30 } : { x: c.x - 120, y: c.y - 75 }
-    setNotes((n) => [...n, { id: `note-${Date.now()}`, ...at, text, audio: lastAudio.current }])
+    const half = vp.w / 2 / canvas.scale.get()
+    // beside the piece, but never past the right edge of the view (notes open 256 wide)
+    const at = f ? { x: Math.min(f.x + f.w - 24, c.x + half - 264), y: f.y - 30 } : { x: c.x - 128, y: c.y - 75 }
+    const noteId = `note-${Date.now()}`
+    notesMade.current++
+    setNotes((n) => [...n, { id: noteId, ...at, text, audio: lastAudio.current, replies: [], teammates: 0 }])
     setSelected([])
+    teammateReplies(noteId)
+  }
+
+  // someone else on the board picks up the note: "is recording…", then their reply lands
+  const teammateReplies = (noteId: string) => {
+    const note = (fn: (n: Note) => Note) => setNotes((list) => list.map((n) => (n.id === noteId ? fn(n) : n)))
+    let who = ''
+    setTimeout(() => note((n) => {
+      if (n.teammates >= 2 || n.recordingBy) return n // a couple of replies is plenty for a demo
+      who = TEAM[n.teammates % TEAM.length] // a different teammate each time
+      return { ...n, recordingBy: who }
+    }), 2500)
+    setTimeout(() => note((n) => {
+      if (!who || n.recordingBy !== who) return n
+      const text = TEAM_LINES[(n.teammates + notesMade.current) % TEAM_LINES.length]
+      return { ...n, recordingBy: undefined, teammates: n.teammates + 1, replies: [...n.replies, { id: `r-${Date.now()}`, author: who, text }] }
+    }), 6000)
+  }
+
+  const addReply = (noteId: string, text: string, audio?: Recording) => {
+    snapshot()
+    const reply: Reply = { id: `r-${Date.now()}`, author: 'You', text: text.charAt(0).toUpperCase() + text.slice(1), audio }
+    setNotes((list) => list.map((n) => (n.id === noteId ? { ...n, recordingBy: undefined, replies: [...n.replies, reply] } : n)))
+    setPhase({ k: 'done', text: 'Reply added', undo: true })
+    teammateReplies(noteId)
   }
 
   // a find's cut-out as a board piece, its longest side `size`, centred on `at`
@@ -389,11 +486,17 @@ export default function Board({ onBack }: { onBack: () => void }) {
       setTimeout(then, 800)
     }
     switch (intent.kind) {
+      case 'direction':
+        return think('Reading the board…', () => {
+          setPhase({ k: 'idle' })
+          setSelected([])
+          setDirection(true)
+        })
       case 'merge':
         if (ids.length < 2) return setPhase({ k: 'clarify', heard })
-        return think(`Merging ${names(ids.slice(0, 2))}…`, () => {
+        return think(`Merging ${names(ids.slice(0, 4))}…`, () => {
           setPhase({ k: 'idle' })
-          doMerge(ids.slice(0, 2))
+          doMerge(ids.slice(0, 4))
         })
       case 'group': {
         if (ids.length < 2) return setPhase({ k: 'clarify', heard })
@@ -458,11 +561,25 @@ export default function Board({ onBack }: { onBack: () => void }) {
     setArmed(false)
     setTip(false)
     setPhase({ k: 'listening' })
-    speech.start(noteMode ? 'Love the texture on this, keep it soft' : suggestionsFor(ids.length)[0].phrase)
+    speech.start(
+      replyTo.current ? 'Yes, and maybe a softer pink beside it'
+        : noteMode ? 'Love the texture on this, keep it soft'
+        : suggestionsFor(ids.length)[0].phrase,
+    )
+  }
+
+  // hold the mic on a note: your words become a reply in its thread
+  const startReply = (noteId: string) => {
+    replyTo.current = noteId
+    setNotes((list) => list.map((n) => (n.id === noteId ? { ...n, recordingBy: 'You' } : n)))
+    startListening([])
   }
 
   const endListening = async (how: 'send' | 'cancel' | 'tap') => {
     setArmed(false)
+    const replying = replyTo.current
+    replyTo.current = null
+    if (replying) setNotes((list) => list.map((n) => (n.id === replying && n.recordingBy === 'You' ? { ...n, recordingBy: undefined } : n)))
     if (how !== 'send') {
       speech.cancel()
       setPhase({ k: 'idle' })
@@ -475,6 +592,7 @@ export default function Board({ onBack }: { onBack: () => void }) {
     const { text: heard, audio } = await speech.stop()
     lastAudio.current = audio
     if (!heard.trim()) return setPhase({ k: 'idle' }) // let go before saying anything
+    if (replying) return addReply(replying, heard, audio)
     if (noteMode) {
       setNoteMode(false)
       return saveNote(heard, targets.current)
@@ -644,32 +762,7 @@ export default function Board({ onBack }: { onBack: () => void }) {
               transition={on && phase.k === 'listening' ? { duration: 1.2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
               style={{ width: '100%', height: '100%' }}
             >
-              {it.merged ? (
-                <div style={{ width: '100%', height: '100%', borderRadius: 20, overflow: 'hidden', position: 'relative', background: 'var(--bg-default)' }}>
-                  <img src={asset(it.merged[0])} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <img src={asset(it.merged[1])} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
-                </div>
-              ) : it.colour ? (
-                <div style={{ width: '100%', height: '100%', borderRadius: 999, background: it.colour, border: '3px solid #fff', boxSizing: 'border-box', boxShadow: '0 4px 12px rgba(0,0,0,.12)' }} />
-              ) : it.crop ? (
-                <div
-                  style={{
-                    width: '100%', height: '100%', borderRadius: RADIUS[it.crop.shape], overflow: 'hidden', position: 'relative',
-                    // cut-outs already have their own edge; crops get a white sticker border
-                    ...(it.crop.shape !== 'cut' && { border: '3px solid #fff', boxSizing: 'border-box', boxShadow: '0 6px 16px rgba(0,0,0,.14)' }),
-                  }}
-                >
-                  <img
-                    src={asset(it.src)}
-                    alt=""
-                    style={{
-                      position: 'absolute', pointerEvents: 'none', maxWidth: 'none',
-                      width: `${100 / it.crop.box[2]}%`, height: `${100 / it.crop.box[3]}%`,
-                      left: `${(-it.crop.box[0] / it.crop.box[2]) * 100}%`, top: `${(-it.crop.box[1] / it.crop.box[3]) * 100}%`,
-                    }}
-                  />
-                </div>
-              ) : it.extracting ? (
+              {it.extracting ? (
                 <div style={{ width: '100%', height: '100%', borderRadius: 16, overflow: 'hidden', position: 'relative', boxShadow: '0 12px 30px rgba(0,0,0,.18)' }}>
                   <img src={asset(it.src)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
                   {/* a red scan sweeps the post while Studio finds its ingredients */}
@@ -684,7 +777,7 @@ export default function Board({ onBack }: { onBack: () => void }) {
                   </div>
                 </div>
               ) : (
-                <img src={asset(it.src)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }} />
+                <PieceContent it={it} />
               )}
             </motion.div>
           </motion.div>
@@ -751,54 +844,60 @@ export default function Board({ onBack }: { onBack: () => void }) {
         })}
       </AnimatePresence>
 
-      <AnimatePresence>{notes.map((n) => <VoiceNote key={n.id} x={ORIGIN + n.x} y={ORIGIN + n.y} text={n.text} audio={n.audio} onDelete={() => deleteNote(n.id)} onMove={(dx, dy) => moveNote(n.id, dx, dy)} />)}</AnimatePresence>
-      </motion.div>
+      <AnimatePresence>{notes.map((n) => <VoiceNote key={n.id} x={ORIGIN + n.x} y={ORIGIN + n.y} text={n.text} audio={n.audio} replies={n.replies} recordingBy={n.recordingBy}
+            replyMic={<Mic size={28} holding={phase.k === 'listening' && n.recordingBy === 'You'} onHoldStart={() => startReply(n.id)} onHoldEnd={endListening} onArm={setArmed} />}
+            onDelete={() => deleteNote(n.id)} onMove={(dx, dy) => moveNote(n.id, dx, dy)} />)}</AnimatePresence>
 
-      {/* merge */}
+      {/* a merge being tried: the pieces fly in from where they sat and settle together */}
       <AnimatePresence>
-        {merging && (
-          <motion.div key="merge" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'absolute', inset: 0, zIndex: 60 }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(252,250,247,.85)', backdropFilter: 'blur(6px)' }} />
-            <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: merging.step === 'result' ? 1.2 : 1, opacity: 0.6 }}
-              transition={{ duration: 0.9, ease }}
-              style={{ position: 'absolute', left: 81, top: 220, width: 240, height: 240, borderRadius: 999, background: 'radial-gradient(var(--red-500), transparent 70%)', filter: 'blur(30px)' }}
-            />
-            {[merging.a, merging.b].map((it, k) => (
-              <motion.img
-                key={it.id}
-                src={asset(it.src)}
-                alt=""
-                initial={{ x: it.x, y: it.y, width: it.w, height: it.h, opacity: 1 }}
-                animate={
-                  merging.step === 'fly'
-                    ? { x: 126 + k * 30, y: 250 + k * 16, width: 130, height: 160, opacity: 1 }
-                    : { x: 116, y: 250, width: 170, height: 220, opacity: 0 }
-                }
-                transition={{ duration: 0.8, ease }}
-                style={{ position: 'absolute', left: 0, top: 0, objectFit: 'contain' }}
+        {merging && (() => {
+          const parts = mergeLayout(merging.pieces, merging.variant)
+          const bottom = Math.max(...parts.map((p) => p.y + p.h))
+          return (
+            <motion.div key="merging" exit={{ opacity: 0, transition: { duration: 0.2 } }} style={{ position: 'absolute', left: ORIGIN + merging.at.x, top: ORIGIN + merging.at.y, zIndex: 950 }}>
+              {/* a quick flash where they meet */}
+              <motion.div
+                initial={{ scale: 0.2, opacity: 0.7 }}
+                animate={{ scale: 1.6, opacity: 0 }}
+                transition={{ duration: 0.9, delay: 0.35, ease }}
+                key={`flash-${merging.variant}`}
+                style={{ position: 'absolute', left: -110, top: -110, width: 220, height: 220, borderRadius: 999, border: '2px solid rgba(173,0,26,.5)', pointerEvents: 'none' }}
               />
-            ))}
-            {merging.step === 'result' && (
-              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, ease }}>
-                <div style={{ position: 'absolute', left: 116, top: 250, width: 170, height: 220, borderRadius: 20, overflow: 'hidden', background: 'var(--bg-default)', boxShadow: '0 20px 40px rgba(0,0,0,.18)' }}>
-                  <img src={asset(merging.flip ? merging.b.src : merging.a.src)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <img src={asset(merging.flip ? merging.a.src : merging.b.src)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
-                </div>
-                <div style={{ position: 'absolute', left: 0, right: 0, top: 486, textAlign: 'center' }}>
-                  <span style={{ padding: '5px 10px', borderRadius: 999, background: 'var(--bg-inverse)', color: 'var(--bg-canvas)', fontSize: 12, fontWeight: 600 }}>{nameOf(merging.a)} × {nameOf(merging.b)}</span>
-                </div>
-                <div style={{ position: 'absolute', left: 0, right: 0, top: 524, display: 'flex', justifyContent: 'center', gap: 8 }}>
+              <div style={{ filter: 'drop-shadow(0 12px 18px rgba(0,0,0,.18))' }}>
+                {parts.map((p) => {
+                  const was = merging.pieces.find((i) => i.id === p.id)!
+                  return (
+                    <motion.div
+                      key={p.id}
+                      initial={{ x: was.x - merging.at.x, y: was.y - merging.at.y, width: was.w, height: was.h, rotate: 0 }}
+                      animate={{ x: p.x, y: p.y, width: p.w, height: p.h, rotate: p.r }}
+                      transition={{ type: 'spring', stiffness: 170, damping: 20 }}
+                      style={{ position: 'absolute', left: 0, top: 0 }}
+                    >
+                      <PieceContent it={p} />
+                    </motion.div>
+                  )
+                })}
+              </div>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 0.4, ease }}
+                onPointerDown={(e) => e.stopPropagation()}
+                style={{ position: 'absolute', left: -150, width: 300, top: bottom + 18, display: 'grid', justifyItems: 'center', gap: 10 }}
+              >
+                <span style={{ padding: '5px 10px', borderRadius: 999, background: 'var(--bg-inverse)', color: 'var(--bg-canvas)', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>{mergeName(merging.pieces)}</span>
+                <div style={{ display: 'flex', gap: 8 }}>
                   <Pill label="Cancel" onClick={() => setMerging(null)} />
-                  <Pill label="Try again" onClick={() => setMerging((m) => m && { ...m, flip: !m.flip })} />
+                  <Pill label="Try again" onClick={() => setMerging((m) => m && { ...m, variant: m.variant + 1 })} />
                   <Pill label="Keep" selected onClick={keepMerge} />
                 </div>
               </motion.div>
-            )}
-          </motion.div>
-        )}
+            </motion.div>
+          )
+        })()}
       </AnimatePresence>
+      </motion.div>
 
       <IconButton label="Back" onClick={onBack} style={{ position: 'absolute', left: 8, top: 70, zIndex: 50 }}>
         <BackIcon />
@@ -808,11 +907,40 @@ export default function Board({ onBack }: { onBack: () => void }) {
         <ShareIcon />
       </IconButton>
 
+      {/* when the board feels done: sum it up */}
+      <motion.button
+        whileTap={{ scale: 0.95 }}
+        onClick={() => { setSelected([]); setDirection(true) }}
+        style={{ position: 'absolute', right: 60, top: 70, zIndex: 50, height: 44, padding: '0 16px', borderRadius: 999, background: '#111', color: '#fff', fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}
+      >
+        {/* once saved, the button reopens it */}
+        {savedDirection && <span style={{ width: 8, height: 8, borderRadius: 999, background: '#c8f02e' }} />}
+        Direction
+      </motion.button>
+
+      <AnimatePresence>
+        {direction && (
+          <DirectionCard
+            key="direction"
+            items={items}
+            board="Studio ads"
+            saved={savedDirection}
+            onClose={() => setDirection(false)}
+            onSave={(d) => {
+              saveDirection(PROJECT, d)
+              setSavedDirection(d)
+              setDirection(false)
+              setPhase({ k: 'done', text: `Saved “${d.title}” to ${PROJECT} in Studio`, undo: false })
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>{rec && <Recommendation key="rec" onAdd={addFinds} onDismiss={() => setRec(false)} />}</AnimatePresence>
 
       {/* one mic, always bottom right: with nothing selected it talks to the whole board,
           with pieces selected it opens into their suggestions */}
-      {phase.k !== 'thinking' && !explore && !shareOpen /* sheets cover the dock */ && (
+      {phase.k !== 'thinking' && !explore && !shareOpen && !merging && !direction /* sheets cover the dock */ && (
         <Dock
           open={selected.length > 0 && (phase.k === 'idle' || phase.k === 'listening')}
           suggestions={suggestionsFor(selected.length)}
@@ -828,7 +956,7 @@ export default function Board({ onBack }: { onBack: () => void }) {
       <div style={{ position: 'absolute', left: 8, right: 8, zIndex: 46, pointerEvents: 'none', ...(slot === 'top' && phase.k !== 'done' ? { top: 124 } : { bottom: 186 }) /* small confirmations always sit low */ }}>
       <AnimatePresence mode="wait">
         {phase.k === 'listening' && (
-          <ListeningPanel key="listen" transcript={speech.transcript} heard={speech.heard} armed={armed} thumbs={targets.current.map((id) => byId(id).src)} title={noteMode ? 'Recording your note…' : undefined} />
+          <ListeningPanel key="listen" transcript={speech.transcript} heard={speech.heard} armed={armed} thumbs={targets.current.map((id) => byId(id).src)} title={replyTo.current ? 'Recording your reply…' : noteMode ? 'Recording your note…' : undefined} />
         )}
         {phase.k === 'thinking' && <Thinking key="think" heard={phase.heard} working={phase.working} />}
         {phase.k === 'confirm' && (

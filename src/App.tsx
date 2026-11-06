@@ -5,9 +5,10 @@ import Home from './screens/Home'
 import Extract from './screens/Extract'
 import Loading from './screens/Loading'
 import Board from './screens/Board'
+import Library from './screens/Library'
 import { setFit } from './components/fit'
 
-export type Screen = 'home' | 'extract' | 'loading' | 'board'
+export type Screen = 'home' | 'extract' | 'loading' | 'board' | 'library'
 
 // the phone in its frame, and the breathing room kept around it
 const DEVICE = { w: 402 + 24, h: 874 + 24 }
@@ -39,6 +40,9 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>(
     () => (new URLSearchParams(location.search).get('screen') as Screen) || 'home',
   )
+  // the app opens on the first-time carousel; after that the Studio tab is your project library
+  const studio = () => setScreen('library')
+  const [openDirection, setOpenDirection] = useState(false) // open the board straight onto its direction card
 
   const fit = useFit()
 
@@ -55,10 +59,11 @@ export default function App() {
               <Extract onBack={() => setScreen('home')} onExtract={() => setScreen('loading')} />
             )}
             {screen === 'loading' && <Loading onDone={() => setScreen('board')} />}
-            {screen === 'board' && <Board onBack={() => setScreen('home')} />}
+            {screen === 'board' && <Board onBack={studio} openDirection={openDirection} />}
+            {screen === 'library' && <Library onOpen={(_, direction) => { setOpenDirection(!!direction); setScreen('board') }} onNew={() => setScreen('home')} />}
           </motion.div>
         </AnimatePresence>
-        <NavBar active="studio" onHome={() => setScreen('home')} />
+        <NavBar active="studio" onHome={() => setScreen('home')} onStudio={studio} />
         <div id="overlay" style={{ position: 'absolute', inset: 0, zIndex: 40, pointerEvents: 'none' }} />
         <div className="chrome" aria-hidden>
           <div className="status">

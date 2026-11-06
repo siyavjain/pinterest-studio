@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 
 type Key = 'home' | 'search' | 'studio' | 'profile'
-type Props = { active: Key; onHome: () => void }
+type Props = { active: Key; onHome: () => void; onStudio: () => void }
 
 // Glyphs exported from the Figma "Nav Bar" component (20×20 icon frame, 1.5 stroke)
 const GLYPHS: Record<Key, { w: number; h: number; d: string[] }> = {
@@ -36,7 +36,7 @@ const GLYPHS: Record<Key, { w: number; h: number; d: string[] }> = {
 
 const ORDER: Key[] = ['home', 'search', 'studio', 'profile']
 
-export default function NavBar({ active, onHome }: Props) {
+export default function NavBar({ active, onHome, onStudio }: Props) {
   return (
     // 272×60 row, 24 gap, every slot 50×60; bubbles sit on the bottom edge
     <nav
@@ -59,7 +59,7 @@ export default function NavBar({ active, onHome }: Props) {
             key={key}
             aria-label={key}
             whileTap={{ scale: 0.92 }}
-            onClick={key === 'home' ? onHome : undefined}
+            onClick={key === 'home' ? onHome : key === 'studio' ? onStudio : undefined}
             style={{ position: 'relative', width: 50, height: 60 }}
           >
             <motion.span

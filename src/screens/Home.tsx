@@ -7,12 +7,13 @@ import { getFit } from '../components/fit'
 
 type Project = { name: string; pins: string; creators: string; age: string; creator?: string; avatar?: string }
 
+// one project per image set in home/assets (p1 … p5), named for what's in it
 const PROJECTS: Project[] = [
-  { name: 'Interiors', pins: '18 pins', creators: '5 creators', age: '2 days', creator: 'nora.lane' },
-  { name: 'Kitchen', pins: '22 pins', creators: '4 creators', age: '3 days', creator: 'theo.marsh', avatar: 'p2-avatar' },
+  { name: 'Collage', pins: '18 pins', creators: '5 creators', age: '2 days', creator: 'nora.lane' },
+  { name: 'Interiors', pins: '22 pins', creators: '4 creators', age: '3 days', creator: 'theo.marsh', avatar: 'p2-avatar' },
   { name: 'Ads', pins: '14 pins', creators: '7 creators', age: '1 day', creator: 'mira.okafor', avatar: 'p3-avatar' },
   { name: 'Shoes', pins: '9 pins', creators: '3 creators', age: '5 days', creator: 'jun.park', avatar: 'p4-avatar' },
-  { name: 'Florals', pins: '11 pins', creators: '2 creators', age: '1 week', creator: 'elle.reyes' },
+  { name: 'Sport', pins: '11 pins', creators: '2 creators', age: '1 week', creator: 'elle.reyes' },
 ]
 
 const SPACING = 256 // distance between stack centres
