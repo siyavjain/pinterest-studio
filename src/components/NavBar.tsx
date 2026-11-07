@@ -4,7 +4,7 @@ type Key = 'home' | 'search' | 'studio' | 'profile'
 type Props = { active: Key; onHome: () => void; onStudio: () => void }
 
 // Glyphs exported from the Figma "Nav Bar" component (20×20 icon frame, 1.5 stroke)
-const GLYPHS: Record<Key, { w: number; h: number; d: string[] }> = {
+export const GLYPHS: Record<Key, { w: number; h: number; d: string[] }> = {
   home: {
     w: 19.5,
     h: 19.5,

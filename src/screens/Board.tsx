@@ -20,6 +20,7 @@ import { pinPattern } from '../components/pin'
 import { ORIGIN, WORLD, useCanvas } from '../board/useCanvas'
 import { asset } from '../components/asset'
 import { getFit } from '../components/fit'
+import { useWeb } from '../components/view'
 import { FINDS, INGREDIENTS, POST_ASPECT, cutAspect, findByPhoto } from '../board/ingredients'
 import type { Find, Shape } from '../board/ingredients'
 
@@ -80,6 +81,27 @@ const START: Item[] = [
     id: `start-c${i}`, src: 'board-palette', label: 'colour', colour, x: 90 + i * 46, y: 896, w: 38, h: 38,
   })),
 ].map((it, i) => ({ ...it, z: i + 1 }))
+
+// The same board on a wide screen: pieces 1.4× larger, scattered across a ~1360×780 area
+// so the window looks full. [x, y, w, h]
+const WEB_AT: Record<string, [number, number, number, number]> = {
+  meadow: [40, 20, 216, 188],
+  bloom: [300, 0, 165, 189],
+  ribbon: [480, 40, 330, 330],
+  gradient: [880, 10, 148, 286],
+  hand: [1080, 30, 227, 302],
+  flower: [60, 260, 188, 188],
+  scary: [330, 360, 356, 356],
+  cap: [760, 380, 174, 217],
+  blob: [980, 380, 101, 181],
+  bouquet: [1130, 380, 223, 260],
+  hill: [40, 520, 263, 136],
+}
+const WEB_START: Item[] = START.map((it, i) => {
+  if (it.colour) return { ...it, x: 470 + (i - 11) * 52, y: 740, w: 44, h: 44 } // the palette row, centred low
+  const [x, y, w, h] = WEB_AT[it.id]
+  return { ...it, x, y, w, h }
+})
 
 type Phase =
   | { k: 'idle' }
@@ -143,7 +165,8 @@ function mergeLayout(pieces: Item[], variant: number): Part[] {
 const PROJECT = 'Ads'
 
 export default function Board({ onBack, openDirection = false }: { onBack: () => void; openDirection?: boolean }) {
-  const [items, setItems] = useState<Item[]>(START)
+  const web = useWeb()
+  const [items, setItems] = useState<Item[]>(web ? WEB_START : START)
   const [groups, setGroups] = useState<Group[]>([])
   const [notes, setNotes] = useState<Note[]>([])
   const [selected, setSelected] = useState<string[]>([])
@@ -187,6 +210,9 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
   useEffect(() => {
     const el = viewport.current
     if (el) setVp({ w: el.offsetWidth, h: el.offsetHeight })
+    // centre the wide layout in the window
+    if (web) canvas.panTo(680, 390)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // a finished action shows briefly, then gets out of the way
@@ -899,11 +925,14 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
       </AnimatePresence>
       </motion.div>
 
-      <IconButton label="Back" onClick={onBack} style={{ position: 'absolute', left: 8, top: 70, zIndex: 50 }}>
-        <BackIcon />
-      </IconButton>
+      {/* the web is only the board, so there's nowhere to go back to */}
+      {!web && (
+        <IconButton label="Back" onClick={onBack} style={{ position: 'absolute', left: 8, top: 'var(--ui-top)', zIndex: 50 }}>
+          <BackIcon />
+        </IconButton>
+      )}
 
-      <IconButton label="Share board" selected={shareOpen} onClick={() => setShareOpen(true)} style={{ position: 'absolute', right: 8, top: 70, zIndex: 50 }}>
+      <IconButton label="Share board" selected={shareOpen} onClick={() => setShareOpen(true)} style={{ position: 'absolute', right: 8, top: 'var(--ui-top)', zIndex: 50 }}>
         <ShareIcon />
       </IconButton>
 
@@ -911,10 +940,8 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
       <motion.button
         whileTap={{ scale: 0.95 }}
         onClick={() => { setSelected([]); setDirection(true) }}
-        style={{ position: 'absolute', right: 60, top: 70, zIndex: 50, height: 44, padding: '0 16px', borderRadius: 999, background: '#111', color: '#fff', fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}
+        style={{ position: 'absolute', right: 60, top: 'var(--ui-top)', zIndex: 50, height: 44, padding: '0 16px', borderRadius: 999, background: '#111', color: '#fff', fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}
       >
-        {/* once saved, the button reopens it */}
-        {savedDirection && <span style={{ width: 8, height: 8, borderRadius: 999, background: '#c8f02e' }} />}
         Direction
       </motion.button>
 
@@ -923,14 +950,14 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
           <DirectionCard
             key="direction"
             items={items}
-            board="Studio ads"
             saved={savedDirection}
-            onClose={() => setDirection(false)}
+            onClose={() => {
+              setDirection(false)
+              if (savedDirection) setPhase({ k: 'done', text: `“${savedDirection.title}” is saved in ${PROJECT}`, undo: false })
+            }}
             onSave={(d) => {
               saveDirection(PROJECT, d)
               setSavedDirection(d)
-              setDirection(false)
-              setPhase({ k: 'done', text: `Saved “${d.title}” to ${PROJECT} in Studio`, undo: false })
             }}
           />
         )}
@@ -953,7 +980,7 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
         />
       )}
 
-      <div style={{ position: 'absolute', left: 8, right: 8, zIndex: 46, pointerEvents: 'none', ...(slot === 'top' && phase.k !== 'done' ? { top: 124 } : { bottom: 186 }) /* small confirmations always sit low */ }}>
+      <div style={{ position: 'absolute', left: 'var(--ui-x)', right: 'var(--ui-x)', zIndex: 46, pointerEvents: 'none', ...(slot === 'top' && phase.k !== 'done' ? { top: 'var(--ui-top2)' } : { bottom: 'var(--ui-low)' }) /* small confirmations always sit low */ }}>
       <AnimatePresence mode="wait">
         {phase.k === 'listening' && (
           <ListeningPanel key="listen" transcript={speech.transcript} heard={speech.heard} armed={armed} thumbs={targets.current.map((id) => byId(id).src)} title={replyTo.current ? 'Recording your reply…' : noteMode ? 'Recording your note…' : undefined} />

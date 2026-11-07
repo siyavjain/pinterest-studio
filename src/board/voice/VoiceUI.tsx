@@ -133,7 +133,7 @@ export function Dock({ open, suggestions, onSuggest, onDelete, mic, tip, tipText
   return (
     <div
       onPointerDown={(e) => e.stopPropagation()}
-      style={{ position: 'absolute', left: 8, right: 8, bottom: 118, zIndex: 47, display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none' }}
+      style={{ position: 'absolute', left: 'var(--ui-x)', right: 'var(--ui-x)', bottom: 'var(--ui-dock)', zIndex: 47, display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none' }}
     >
       <motion.div
         layout

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useDragControls } from 'framer-motion'
+import { useWeb } from '../components/view'
 
 /** Bottom sheet: slides up, swipe down (or tap the scrim) to close.
  *  With handleOnly, only the top strip starts the swipe so the content can scroll. */
@@ -12,8 +13,43 @@ export default function Sheet({ open, onClose, children, height, handleOnly }: {
   handleOnly?: boolean
 }) {
   const controls = useDragControls()
+  const web = useWeb()
   const host = document.getElementById('overlay')
   if (!host) return null
+
+  // on the web the same content opens as a panel down the right side
+  if (web)
+    return createPortal(
+      <AnimatePresence>
+        {open && (
+          <>
+            <motion.div
+              key="scrim"
+              onClick={onClose}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.12 }}
+              exit={{ opacity: 0 }}
+              style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 40, pointerEvents: 'auto' }}
+            />
+            <motion.div
+              key="panel"
+              initial={{ x: 'calc(100% + 24px)' }}
+              animate={{ x: 0 }}
+              exit={{ x: 'calc(100% + 24px)' }}
+              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+              style={{
+                position: 'absolute', top: 12, right: 12, bottom: 12, width: 420, zIndex: 41, pointerEvents: 'auto',
+                background: 'var(--bg-canvas)', borderRadius: 'var(--radius-sheet)', boxShadow: '0 20px 60px rgba(0,0,0,.14)',
+                overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', paddingTop: 8, paddingBottom: 24,
+              }}
+            >
+              {children}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>,
+      host,
+    )
 
   // rendered above the nav bar
   return createPortal(

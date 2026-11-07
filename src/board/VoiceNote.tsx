@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { PauseIcon, PlayIcon, TrashIcon } from '../components/Icons'
 import type { Recording } from './voice/useSpeech'
 import Squiggle from './Squiggle'
+import Face from '../components/Face'
 
 export type Reply = { id: string; author: string; text: string; audio?: Recording }
 
@@ -84,16 +85,9 @@ function useClip(text: string, audio: Recording | undefined, author: string) {
   return { playing, toggle, left: clock(playing ? length - elapsed : length) }
 }
 
+// profile pictures, with each teammate's colour as a thin ring so threads stay easy to follow
 const Avatar = ({ who, size = 28 }: { who: string; size?: number }) => (
-  <span
-    style={{
-      width: size, height: size, borderRadius: 999, flexShrink: 0, display: 'grid', placeItems: 'center',
-      background: who === 'You' ? 'var(--bg-default)' : PEOPLE[who]?.colour, border: `2px solid ${PEOPLE[who]?.colour}`,
-      color: 'var(--bg-canvas)', fontSize: size * 0.42, fontWeight: 700, boxSizing: 'border-box',
-    }}
-  >
-    {who === 'You' ? '' : who[0]}
-  </span>
+  <Face who={who} size={size} ring={who === 'You' ? undefined : PEOPLE[who]?.colour} />
 )
 
 const PlayButton = ({ playing, onClick, size = 28 }: { playing: boolean; onClick: () => void; size?: number }) => (

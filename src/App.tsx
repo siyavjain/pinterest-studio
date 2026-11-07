@@ -7,6 +7,9 @@ import Loading from './screens/Loading'
 import Board from './screens/Board'
 import Library from './screens/Library'
 import { setFit } from './components/fit'
+import WebNav from './components/WebNav'
+import { ViewContext, WIDE, saveView, savedView } from './components/view'
+import type { View } from './components/view'
 
 export type Screen = 'home' | 'extract' | 'loading' | 'board' | 'library'
 
@@ -15,17 +18,18 @@ const DEVICE = { w: 402 + 24, h: 874 + 24 }
 const MARGIN = 40
 
 /** Scale the phone down (never up) so the whole frame fits the window with a margin. */
-function useFit() {
-  const measure = () =>
-    innerWidth <= 500 ? 1 : Math.min(1, (innerWidth - MARGIN * 2) / DEVICE.w, (innerHeight - MARGIN * 2) / DEVICE.h)
-  const [k, setK] = useState(measure)
-  setFit(k)
+const measure = () =>
+  innerWidth <= 500 ? 1 : Math.min(1, (innerWidth - MARGIN * 2) / DEVICE.w, (innerHeight - MARGIN * 2) / DEVICE.h)
+
+/** The window's fit for the phone, and whether it's wide enough for the web layout. */
+function useWindow() {
+  const [w, setW] = useState(() => ({ k: measure(), wide: innerWidth >= WIDE }))
   useLayoutEffect(() => {
-    const onResize = () => setK(measure())
+    const onResize = () => setW({ k: measure(), wide: innerWidth >= WIDE })
     addEventListener('resize', onResize)
     return () => removeEventListener('resize', onResize)
   }, [])
-  return k
+  return w
 }
 
 const fade = {
@@ -44,10 +48,49 @@ export default function App() {
   const studio = () => setScreen('library')
   const [openDirection, setOpenDirection] = useState(false) // open the board straight onto its direction card
 
-  const fit = useFit()
+  const win = useWindow()
+  const [picked, setPicked] = useState<View | null>(savedView)
+  const view: View = win.wide ? picked ?? 'web' : 'phone'
+  const pick = (v: View) => {
+    saveView(v)
+    setPicked(v)
+  }
+  // drags divide by the phone's scale; the web layout is never scaled
+  const fit = view === 'web' ? 1 : win.k
+  setFit(fit)
+
+  const openProject = (direction?: boolean) => {
+    setOpenDirection(!!direction)
+    setScreen('board')
+  }
+
+  // the web is just the board, full window
+  if (view === 'web')
+    return (
+      <ViewContext.Provider value="web">
+        <div className="web-app">
+          <WebNav onPhone={() => pick('phone')} />
+          <main className="web-main">
+            <Board onBack={studio} />
+            {/* side panels open over the board's own buttons */}
+            <div id="overlay" style={{ position: 'absolute', inset: 0, zIndex: 70, pointerEvents: 'none' }} />
+          </main>
+        </div>
+      </ViewContext.Provider>
+    )
 
   return (
+    <ViewContext.Provider value="phone">
     <div className="stage">
+      {win.wide && (
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={() => pick('web')}
+          style={{ position: 'fixed', top: 20, right: 20, height: 40, padding: '0 16px', borderRadius: 999, background: 'var(--bg-inverse)', color: 'var(--bg-canvas)', fontSize: 14, zIndex: 10 }}
+        >
+          Switch to web
+        </motion.button>
+      )}
       {/* the box takes the scaled size so the page never scrolls; the device scales inside it */}
       <div className="fit" style={{ width: DEVICE.w * fit, height: DEVICE.h * fit }}>
       <div className="device" style={{ transform: `scale(${fit})` }}>
@@ -60,7 +103,7 @@ export default function App() {
             )}
             {screen === 'loading' && <Loading onDone={() => setScreen('board')} />}
             {screen === 'board' && <Board onBack={studio} openDirection={openDirection} />}
-            {screen === 'library' && <Library onOpen={(_, direction) => { setOpenDirection(!!direction); setScreen('board') }} onNew={() => setScreen('home')} />}
+            {screen === 'library' && <Library onOpen={(_, direction) => openProject(direction)} onNew={() => setScreen('home')} />}
           </motion.div>
         </AnimatePresence>
         <NavBar active="studio" onHome={() => setScreen('home')} onStudio={studio} />
@@ -77,6 +120,7 @@ export default function App() {
       </div>
       </div>
     </div>
+    </ViewContext.Provider>
   )
 }
 

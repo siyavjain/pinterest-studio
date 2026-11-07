@@ -13,6 +13,13 @@
   --red-700: #ad001a;
 
   --radius-card: 24px;
+
+  /* where floating board UI sits; the web layout moves these (see .web-app) */
+  --ui-top: 70px;        /* back / share row, under the status bar */
+  --ui-top2: 124px;      /* banners and top panels, under that row */
+  --ui-dock: 118px;      /* the mic dock, above the nav bar */
+  --ui-low: 186px;       /* panels that sit above the dock */
+  --ui-x: max(8px, calc(50% - 205px)); /* side inset: full width on the phone, a centred column on the web */
   --radius-sheet: 32px;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -84,3 +91,16 @@ img { display: block; user-select: none; -webkit-user-drag: none; }
 @keyframes squiggle { from { transform: translateX(0); } to { transform: translateX(-386px); } }
 .squiggle { animation: squiggle 3s linear infinite; }
 
+
+/* ---------- web layout ---------- */
+.web-app {
+  --ui-top: 16px;
+  --ui-top2: 72px;
+  --ui-dock: 28px;
+  --ui-low: 96px;
+  position: fixed;
+  inset: 0;
+  background: var(--bg-canvas);
+  overflow: hidden;
+}
+.web-main { position: absolute; top: 72px; left: 0; right: 0; bottom: 0; overflow: hidden; }

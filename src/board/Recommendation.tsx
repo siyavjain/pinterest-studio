@@ -23,7 +23,7 @@ export default function Recommendation({ onAdd, onDismiss }: { onAdd: (srcs: str
       exit={{ y: -40, opacity: 0, scale: 0.96 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       style={{
-        position: 'absolute', left: 8, right: 8, top: 124, height: 64, borderRadius: 999, zIndex: 34,
+        position: 'absolute', left: 'var(--ui-x)', right: 'var(--ui-x)', top: 'var(--ui-top2)', height: 64, borderRadius: 999, zIndex: 34,
         padding: '0 8px 0 10px', display: 'flex', alignItems: 'center', gap: 10,
         background: 'var(--bg-inverse)', color: 'var(--bg-canvas)', boxShadow: '0 12px 30px rgba(0,0,0,.2)',
       }}

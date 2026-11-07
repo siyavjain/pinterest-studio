@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Sheet from './Sheet'
 import { ActionButton, Pill } from '../components/Button'
+import Face from '../components/Face'
 import { DownloadIcon, LinkIcon, MailIcon, MessageIcon, PlusIcon, QrIcon } from '../components/Icons'
 
 const PEOPLE = ['Maya', 'Jules', 'Ren', 'Ari']
@@ -78,7 +79,7 @@ export default function ShareSheet({ open, onClose, cover }: { open: boolean; on
         <Row
           title="Send to collaborators"
           items={[
-            ...PEOPLE.map((p) => ({ label: p, node: <Circle /> })),
+            ...PEOPLE.map((p) => ({ label: p, node: <Circle><Face who={p} size={56} /></Circle> })),
             { label: 'Invite', node: <Circle dashed><PlusIcon /></Circle> },
           ]}
         />
