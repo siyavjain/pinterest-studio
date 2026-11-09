@@ -5,6 +5,7 @@ import { Pill } from '../components/Button'
 import { PlusIcon } from '../components/Icons'
 import { asset } from '../components/asset'
 import { FINDS } from './ingredients'
+import { useWeb } from '../components/view'
 
 // pins that match the moodboard, nature ads woven between your finds; each extracts to its cut-out and colours
 const SIMILAR = ['be-with-nature', 'poppy', 'touch-grass', 'wanderlust', 'carrots', 'gardener', 'tree-hand', 'traffic', 'lamb', 'peony', 'head-hill', 'take-a-sit', 'let-nature-in']
@@ -27,10 +28,12 @@ export default function ExploreSheet({ open, onClose, onAdd, subject = 'this boa
 }) {
   const [tab, setTab] = useState<'similar' | 'ingredients'>(initialTab)
   const [added, setAdded] = useState<string[]>([])
+  const web = useWeb()
 
   return (
     <Sheet open={open} onClose={onClose} height={620} handleOnly>
-      <div style={{ padding: '14px 20px 0' }}>
+      {/* on the web the panel scrolls as a whole, so the title and tabs stay pinned at its top */}
+      <div style={{ padding: '14px 20px 0', ...(web && { position: 'sticky', top: -8, zIndex: 2, paddingBottom: 14, background: 'var(--bg-canvas)' }) }}>
         <div style={{ fontSize: 20, fontWeight: 600 }}>Explore</div>
         <div className="t-body">{tab === 'similar' ? `${SIMILAR.length} more like ${subject}` : `Pulled from ${subject}`}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
@@ -39,7 +42,9 @@ export default function ExploreSheet({ open, onClose, onAdd, subject = 'this boa
         </div>
       </div>
 
-      <div style={{ position: 'relative', height: 470, marginTop: 16, overflowY: 'auto', overflowX: 'hidden' }}>
+      {/* the phone's sheet is a fixed height, so the list scrolls inside it; the web's panel
+          runs the full window height and scrolls as a whole */}
+      <div style={{ position: 'relative', marginTop: 16, overflowX: 'hidden', ...(web ? {} : { height: 470, overflowY: 'auto' }) }}>
         <AnimatePresence initial={false} mode="popLayout">
           {tab === 'similar' ? (
             <motion.div

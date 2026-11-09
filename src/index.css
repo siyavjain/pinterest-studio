@@ -97,10 +97,11 @@ img { display: block; user-select: none; -webkit-user-drag: none; }
   --ui-top: 16px;
   --ui-top2: 72px;
   --ui-dock: 28px;
-  --ui-low: 96px;
+  --ui-low: 172px; /* above the toolbar and the selection bar */
   position: fixed;
   inset: 0;
   background: var(--bg-canvas);
   overflow: hidden;
 }
-.web-main { position: absolute; top: 72px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+/* the board sits right of the 72px rail, full height */
+.web-main { position: absolute; top: 0; left: 72px; right: 0; bottom: 0; overflow: hidden; }

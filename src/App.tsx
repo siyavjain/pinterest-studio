@@ -47,6 +47,7 @@ export default function App() {
   // the app opens on the first-time carousel; after that the Studio tab is your project library
   const studio = () => setScreen('library')
   const [openDirection, setOpenDirection] = useState(false) // open the board straight onto its direction card
+  const [fresh, setFresh] = useState(false) // the board was just made from the extract flow
 
   const win = useWindow()
   const [picked, setPicked] = useState<View | null>(savedView)
@@ -61,6 +62,7 @@ export default function App() {
 
   const openProject = (direction?: boolean) => {
     setOpenDirection(!!direction)
+    setFresh(false)
     setScreen('board')
   }
 
@@ -101,8 +103,8 @@ export default function App() {
             {screen === 'extract' && (
               <Extract onBack={() => setScreen('home')} onExtract={() => setScreen('loading')} />
             )}
-            {screen === 'loading' && <Loading onDone={() => setScreen('board')} />}
-            {screen === 'board' && <Board onBack={studio} openDirection={openDirection} />}
+            {screen === 'loading' && <Loading onDone={() => { setFresh(true); setScreen('board') }} />}
+            {screen === 'board' && <Board onBack={studio} openDirection={openDirection} fresh={fresh} />}
             {screen === 'library' && <Library onOpen={(_, direction) => openProject(direction)} onNew={() => setScreen('home')} />}
           </motion.div>
         </AnimatePresence>

@@ -136,7 +136,7 @@ function ReplyRow({ reply }: { reply: Reply }) {
 }
 
 /** Board Note: a pinned avatar that opens into a voice note thread anyone on the board can reply to. */
-export default function VoiceNote({ x, y, author = 'You', text, audio, replies, recordingBy, replyMic, onDelete, onMove }: {
+export default function VoiceNote({ x, y, author = 'You', text, audio, replies, recordingBy, replyMic, onConvert, onDelete, onMove, onMeasure }: {
   x: number
   y: number
   author?: string
@@ -144,11 +144,25 @@ export default function VoiceNote({ x, y, author = 'You', text, audio, replies, 
   audio?: Recording // the recorded voice; without it the note is read aloud
   replies: Reply[]
   recordingBy?: string // someone is recording a reply right now
-  replyMic: ReactNode // hold to reply
+  replyMic?: ReactNode // hold to reply; the web has no mic
+  onConvert?: () => void // the web: turn it into a text note
   onDelete: () => void
   onMove: (dx: number, dy: number) => void // window px; the board converts for zoom
+  onMeasure?: (w: number, h: number) => void // the card's size, for the line to its piece
 }) {
   const [open, setOpen] = useState(true)
+  const card = useRef<HTMLDivElement>(null)
+  const measure = useRef(onMeasure)
+  measure.current = onMeasure
+  useEffect(() => {
+    const el = card.current
+    if (!el) return
+    const report = () => measure.current?.(el.offsetWidth, el.offsetHeight)
+    report()
+    const ro = new ResizeObserver(report)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   const [full, setFull] = useState(false) // whole transcript instead of two lines
   const clip = useClip(text, audio, author)
 
@@ -179,6 +193,7 @@ export default function VoiceNote({ x, y, author = 'You', text, audio, replies, 
         )}
       </AnimatePresence>
       <motion.div
+        ref={card}
         initial={false}
         animate={{ width: open ? 256 : 36, borderRadius: open ? '6px 20px 20px 20px' : '6px 18px 18px 18px' }}
         transition={{ duration: 0.45, ease }}
@@ -253,12 +268,28 @@ export default function VoiceNote({ x, y, author = 'You', text, audio, replies, 
                   </div>
                 )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {replyMic}
-                  <span className="t-label" style={{ color: 'var(--text-secondary)' }}>
-                    {replies.length ? `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'} · hold to reply` : 'Hold to reply'}
-                  </span>
-                </div>
+                {onConvert ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span className="t-label" style={{ color: 'var(--text-secondary)' }}>
+                      {replies.length ? `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'} · from the phone` : 'From the phone'}
+                    </span>
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      whileHover={{ backgroundColor: '#ddd6ce' }}
+                      onClick={onConvert}
+                      style={{ height: 30, padding: '0 12px', borderRadius: 999, background: 'var(--bg-default)', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}
+                    >
+                      Convert to text
+                    </motion.button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {replyMic}
+                    <span className="t-label" style={{ color: 'var(--text-secondary)' }}>
+                      {replies.length ? `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'} · hold to reply` : 'Hold to reply'}
+                    </span>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}

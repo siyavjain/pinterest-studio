@@ -14,6 +14,12 @@ import DirectionCard from '../board/DirectionCard'
 import { loadDirection, saveDirection } from '../board/directions'
 import VoiceNote from '../board/VoiceNote'
 import PieceContent from '../board/Piece'
+import Face from '../components/Face'
+import TextNote from '../board/TextNote'
+import { useVisibleBoxes, visibleRect } from '../board/visible'
+import { INKS, SelectionBar, Toolbar, WIDTHS } from '../board/WebTools'
+import type { Pen, Tool } from '../board/WebTools'
+import { loadNotes, saveNotes } from '../board/notes'
 import type { Part } from '../board/Piece'
 import type { Reply } from '../board/VoiceNote'
 import { pinPattern } from '../components/pin'
@@ -48,6 +54,11 @@ type FrameColour = keyof typeof FRAMES
 const FRAME_FOR: Record<string, FrameColour> = { green: 'green', pink: 'red', purple: 'purple', neutral: 'ink' }
 type Note = {
   id: string; x: number; y: number; text: string; audio?: Recording
+  author?: string // who left it; you, unless it came from a teammate
+  kind?: 'voice' | 'text' // voice by default; the web adds typed notes
+  on?: string // the piece it was left on
+  fromVoice?: boolean // a text note converted from a voice note
+  editing?: boolean // a new text note, waiting for words
   replies: Reply[]
   recordingBy?: string // who is recording a reply to it right now
   teammates: number // simulated replies it has had, so the chatter stops
@@ -61,7 +72,9 @@ const TEAM_LINES = [
   'Love this. Pulling a few more like it into Explore.',
   'Keep it soft, but bump the grain a little.',
 ]
-type Snapshot = { items: Item[]; groups: Group[]; notes: Note[] }
+// a line drawn with the web's marker, in board coordinates
+type Stroke = { id: string; points: [number, number][]; ink: string; width: number; kind: 'pen' | 'pencil' | 'highlighter' }
+type Snapshot = { items: Item[]; groups: Group[]; notes: Note[]; strokes: Stroke[] }
 
 // Cut-outs exactly where they sit on the "Studio ads workspace" frame (full, uncropped)
 const START: Item[] = [
@@ -98,7 +111,7 @@ const WEB_AT: Record<string, [number, number, number, number]> = {
   hill: [40, 520, 263, 136],
 }
 const WEB_START: Item[] = START.map((it, i) => {
-  if (it.colour) return { ...it, x: 470 + (i - 11) * 52, y: 740, w: 44, h: 44 } // the palette row, centred low
+  if (it.colour) return { ...it, x: 40 + (i - 11) * 52, y: 690, w: 44, h: 44 } // the palette row, under the hill, clear of the toolbar
   const [x, y, w, h] = WEB_AT[it.id]
   return { ...it, x, y, w, h }
 })
@@ -115,11 +128,22 @@ type Phase =
 const LONG_PRESS_MS = 450
 
 // An outline that follows a cut-out's transparent edges: the same shape shadowed
-// a few px in four directions, in Red/700. Width 0 = no outline.
+// a few px in four directions, in white. Width 0 = no outline.
 const outline = (w: number) => {
-  const c = `rgba(173, 0, 26, ${w ? 1 : 0})`
-  return `drop-shadow(${w}px 0 0 ${c}) drop-shadow(-${w}px 0 0 ${c}) drop-shadow(0 ${w}px 0 ${c}) drop-shadow(0 -${w}px 0 ${c})`
+  // a white sticker edge and a soft lift, rather than a coloured line
+  const c = `rgba(255, 255, 255, ${w ? 1 : 0})`
+  const lift = `drop-shadow(0 ${w * 2}px ${w * 4}px rgba(0, 0, 0, ${w ? 0.18 : 0}))`
+  return `drop-shadow(${w}px 0 0 ${c}) drop-shadow(-${w}px 0 0 ${c}) drop-shadow(0 ${w}px 0 ${c}) drop-shadow(0 -${w}px 0 ${c}) ${lift}`
 }
+
+// where a comment sits beside the piece it's on: off its right side (or left, for a second
+// one), its middle level with the piece's middle, with room between for the line
+const COMMENT_MID = 28 // half a one-line comment card's height
+const besidePiece = (f: { x: number; y: number; w: number; h: number }, left = false) =>
+  ({ x: left ? f.x - 380 : f.x + f.w + 64, y: f.y + f.h / 2 - COMMENT_MID })
+// the phone has no room beside a piece, so its notes go under it, kept inside the screen
+const underPiece = (f: { x: number; y: number; w: number; h: number }) =>
+  ({ x: Math.min(Math.max(f.x + f.w / 2 - 128, 8), 402 - 264), y: f.y + f.h + 40 })
 const ease = [0.22, 1, 0.36, 1] as const
 
 function bounds(items: Item[]) {
@@ -164,11 +188,28 @@ function mergeLayout(pieces: Item[], variant: number): Part[] {
 // the board's project in the Studio library, where its direction card is kept
 const PROJECT = 'Ads'
 
-export default function Board({ onBack, openDirection = false }: { onBack: () => void; openDirection?: boolean }) {
+export default function Board({ onBack, openDirection = false, fresh = false }: { onBack: () => void; openDirection?: boolean; fresh?: boolean /* just created: nobody has left a note yet */ }) {
   const web = useWeb()
   const [items, setItems] = useState<Item[]>(web ? WEB_START : START)
   const [groups, setGroups] = useState<Group[]>([])
-  const [notes, setNotes] = useState<Note[]>([])
+  // notes carry over between phone and web; a note left on a piece is placed beside it in this layout.
+  // A board that was just created starts with none (and clears the last board's).
+  const [notes, setNotes] = useState<Note[]>(() =>
+    (fresh ? [] : loadNotes() ?? []).map((n) => {
+      const f = n.on && (web ? WEB_START : START).find((i) => i.id === n.on)
+      // beside the piece; on the web, pulled in so a 256-wide note stays inside the 1360 layout
+      return f ? { ...n, ...(web ? besidePiece(f) : underPiece(f)) } : n
+    }),
+  )
+  useEffect(() => saveNotes(notes), [notes])
+  const [tool, setTool] = useState<Tool>('select') // web only
+  useVisibleBoxes() // redraw comment lines once the stickers' real edges are known
+  const [cardSize, setCardSize] = useState<Record<string, { w: number; h: number }>>({}) // each comment card, for its line
+  const [ink, setInk] = useState(INKS[1])
+  const [pen, setPen] = useState<Pen>('pen')
+  const [penWidth, setPenWidth] = useState(WIDTHS[1])
+  const [strokes, setStrokes] = useState<Stroke[]>([])
+  const drawing = useRef<string | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [shareOpen, setShareOpen] = useState(false)
   const [explore, setExplore] = useState<null | { subject: string; tab: 'similar' | 'ingredients' }>(null)
@@ -211,7 +252,7 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
     const el = viewport.current
     if (el) setVp({ w: el.offsetWidth, h: el.offsetHeight })
     // centre the wide layout in the window
-    if (web) canvas.panTo(680, 390)
+    if (web) canvas.panTo(680, 380) // centred, nudged up so the toolbar sits under the pieces
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -227,7 +268,7 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
     return () => clearTimeout(t)
   }, [])
 
-  const snapshot = () => history.current.push({ items, groups, notes })
+  const snapshot = () => history.current.push({ items, groups, notes, strokes })
   const byId = (id: string) => items.find((i) => i.id === id)!
   const nameOf = (it: Item) => it.label ?? labelOf(it.src)
   const names = (ids: string[]) => {
@@ -237,6 +278,33 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
 
   const move = (id: string, dx: number, dy: number) =>
     setItems((list) => list.map((i) => (i.id === id ? { ...i, x: i.x + dx, y: i.y + dy } : i)))
+
+  // drag a corner of the selected piece to resize it; it keeps its shape and the opposite corner stays put
+  const [resizing, setResizing] = useState(false)
+  const startResize = (id: string, corner: 'nw' | 'ne' | 'sw' | 'se', e: React.PointerEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    snapshot()
+    setResizing(true)
+    const it = byId(id)
+    const from = { x: e.clientX, y: e.clientY }
+    const aspect = it.h / it.w
+    const left = corner.endsWith('w'), top = corner.startsWith('n')
+    const onMove = (ev: PointerEvent) => {
+      const dx = (ev.clientX - from.x) / zoom()
+      // the width follows the pointer; the height follows the width
+      const w = Math.max(24, it.w + (left ? -dx : dx))
+      const h = w * aspect
+      setItems((list) => list.map((i) => (i.id === id ? { ...i, w, h, x: left ? it.x + it.w - w : it.x, y: top ? it.y + it.h - h : it.y } : i)))
+    }
+    const onUp = () => {
+      setResizing(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
 
   // drag a frame: everything in it travels together
   const moveGroup = (ids: string[], dx: number, dy: number) =>
@@ -367,13 +435,111 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
     const c = canvas.viewCentre()
     const f = id ? byId(id) : null
     const half = vp.w / 2 / canvas.scale.get()
-    // beside the piece, but never past the right edge of the view (notes open 256 wide)
-    const at = f ? { x: Math.min(f.x + f.w - 24, c.x + half - 264), y: f.y - 30 } : { x: c.x - 128, y: c.y - 75 }
+    // under the piece, inside the view (notes open 256 wide), with room for the line to it
+    const at = f ? { ...underPiece(f), x: Math.min(underPiece(f).x, c.x + half - 264) } : { x: c.x - 128, y: c.y - 75 }
     const noteId = `note-${Date.now()}`
     notesMade.current++
-    setNotes((n) => [...n, { id: noteId, ...at, text, audio: lastAudio.current, replies: [], teammates: 0 }])
+    setNotes((n) => [...n, { id: noteId, ...at, text, audio: lastAudio.current, on: id, replies: [], teammates: 0 }])
     setSelected([])
     teammateReplies(noteId)
+  }
+
+  /* ---------- web: typed notes ---------- */
+  const addTextNote = (id?: string) => {
+    snapshot()
+    const c = canvas.viewCentre()
+    const f = id ? byId(id) : null
+    // beside the piece; if it already has a note, on its other side
+    const taken = !!id && notes.some((n) => n.on === id)
+    const at = f ? (web ? besidePiece(f, taken) : underPiece(f)) : { x: c.x - 120, y: c.y - 60 }
+    setNotes((n) => [...n, { id: `note-${Date.now()}`, ...at, text: '', kind: 'text', on: id, editing: true, replies: [], teammates: 0 }])
+    setSelected([])
+    setTool('select')
+  }
+  // the marker: a layer over the board catches the drag and draws in board coordinates
+  const boardPoint = (e: React.PointerEvent): [number, number] => {
+    const r = viewport.current!.getBoundingClientRect()
+    const k = canvas.scale.get()
+    return [(e.clientX - r.left - canvas.x.get()) / k - ORIGIN, (e.clientY - r.top - canvas.y.get()) / k - ORIGIN]
+  }
+  // the eraser takes away any line that passes near the pointer
+  const erase = (p: [number, number]) => {
+    const r = 14 / canvas.scale.get()
+    setStrokes((l) => l.filter((st) => !st.points.some(([x, y]) => Math.hypot(x - p[0], y - p[1]) < r + st.width)))
+  }
+  const penDown = (e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    snapshot()
+    const id = `s-${Date.now()}`
+    drawing.current = id
+    if (pen === 'eraser') return erase(boardPoint(e))
+    // the highlighter is broad and see-through; the pencil a touch finer, with grain
+    const width = pen === 'highlighter' ? penWidth * 4 : pen === 'pencil' ? Math.max(1.5, penWidth * 0.75) : penWidth
+    setStrokes((l) => [...l, { id, ink, width, kind: pen, points: [boardPoint(e)] }])
+  }
+  const penMove = (e: React.PointerEvent) => {
+    const id = drawing.current
+    if (!id) return
+    const p = boardPoint(e)
+    if (pen === 'eraser') return erase(p)
+    setStrokes((l) => l.map((st) => (st.id === id ? { ...st, points: [...st.points, p] } : st)))
+  }
+  const penUp = () => (drawing.current = null)
+
+  // the web's arrow drags a selection box over empty board (shift adds to what's selected);
+  // the board itself moves with the Hand, space-drag, or scrolling
+  const [marquee, setMarquee] = useState<null | { x0: number; y0: number; x1: number; y1: number; add: boolean }>(null)
+  const [spaceHeld, setSpaceHeld] = useState(false)
+  const boxDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const [x, y] = boardPoint(e)
+    setMarquee({ x0: x, y0: y, x1: x, y1: y, add: e.shiftKey })
+    setPalette(null)
+  }
+  const boxMove = (e: React.PointerEvent) => {
+    if (!marquee) return
+    const [x, y] = boardPoint(e)
+    setMarquee({ ...marquee, x1: x, y1: y })
+  }
+  const boxUp = () => {
+    if (!marquee) return
+    const l = Math.min(marquee.x0, marquee.x1), r = Math.max(marquee.x0, marquee.x1)
+    const t = Math.min(marquee.y0, marquee.y1), b = Math.max(marquee.y0, marquee.y1)
+    // a click without a drag just clears the selection, like tapping empty board
+    const hit = r - l < 4 && b - t < 4 ? [] : items.filter((i) => i.x < r && i.x + i.w > l && i.y < b && i.y + i.h > t).map((i) => i.id)
+    setSelected((s) => (marquee.add ? [...new Set([...s, ...hit])] : hit))
+    setMarquee(null)
+  }
+  const boxing = web && tool === 'select' && !spaceHeld
+
+  // hold space to pan for a moment, whatever the tool
+  useEffect(() => {
+    if (!web) return
+    const typing = (e: KeyboardEvent) => (e.target as Element)?.closest?.('input, textarea, [contenteditable]')
+    const down = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !typing(e)) {
+        e.preventDefault()
+        setSpaceHeld(true)
+      }
+    }
+    const up = (e: KeyboardEvent) => e.code === 'Space' && setSpaceHeld(false)
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
+  }, [web])
+  const pathOf = (pts: [number, number][]) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${(x + ORIGIN).toFixed(1)} ${(y + ORIGIN).toFixed(1)}`).join(' ')
+
+  const openPins = () => setExplore({ subject: selected.length ? `the ${names(selected)}` : 'this board', tab: 'similar' })
+  const setNoteText = (id: string, text: string) => setNotes((list) => list.map((n) => (n.id === id ? { ...n, text } : n)))
+  // a voice note from the phone becomes words you can edit; its thread comes along
+  const convertNote = (id: string) => {
+    snapshot()
+    setNotes((list) => list.map((n) => (n.id === id ? { ...n, kind: 'text', fromVoice: true, audio: undefined } : n)))
+    setPhase({ k: 'done', text: 'Converted to a text note', undo: true })
   }
 
   // someone else on the board picks up the note: "is recording…", then their reply lands
@@ -641,10 +807,27 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
     setPhase({ k: 'done', text: ids.length === 1 ? `Deleted the ${nameOf(byId(ids[0]))}` : `Deleted ${ids.length} pieces`, undo: true })
   }
 
-  // Delete / Backspace removes the selection on a keyboard
+  // Delete / Backspace removes the selection on a keyboard; on the web, letters pick tools
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const typing = (e.target as Element)?.closest?.('input, textarea, [contenteditable]')
+      if (typing) return
       if ((e.key === 'Delete' || e.key === 'Backspace') && selected.length && phase.k === 'idle') deletePieces(selected)
+      if (!web || e.altKey) return
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        undo()
+        return
+      }
+      if (e.metaKey || e.ctrlKey) return
+      const k = e.key.toLowerCase()
+      if (k === 'v') setTool('select')
+      if (k === 'h') setTool('hand')
+      if (k === 't' || k === 'n') addTextNote(selected.length === 1 ? selected[0] : undefined)
+      if (k === 'p') openPins()
+      if (k === 'd') setTool((t) => (t === 'pen' ? 'select' : 'pen'))
+      if (k === 'f' && selected.length > 1) webSuggest({ label: 'Group', phrase: 'Group these' })
+      if (k === 'escape') setTool('select')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -658,6 +841,9 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
     setNotes((n) => n.filter((x) => x.id !== id))
     setPhase({ k: 'done', text: 'Note deleted', undo: true })
   }
+
+  // the web's buttons: "Add a note" types one instead of recording it
+  const webSuggest = (s: Suggestion) => (s.label === 'Add a note' ? addTextNote(selected[0]) : suggest(s))
 
   const suggest = (s: Suggestion) => {
     // "Add a note" doesn't guess the words: the next hold records them
@@ -675,6 +861,7 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
 
   // long-press a piece: select it and start listening in one go
   const onItemDown = (id: string, e: React.PointerEvent) => {
+    if (web) return // no voice on the web: a long press is just a press
     const from = { x: e.clientX, y: e.clientY }
     longPress.current = false
     press.current = setTimeout(() => {
@@ -707,6 +894,7 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
     setItems(prev.items)
     setGroups(prev.groups)
     setNotes(prev.notes)
+    setStrokes(prev.strokes)
   }
 
   const hidden: string[] = merging ? merging.ids : []
@@ -715,13 +903,24 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
     <div ref={viewport} className="screen" style={{ overflow: 'clip' }}>
       {/* the freeform board: drag empty space to move around, pinch or ctrl+scroll to zoom */}
       <motion.div
-        {...canvas.handlers}
+        {...(boxing ? { onPointerDown: boxDown, onPointerMove: boxMove, onPointerUp: boxUp, onPointerCancel: boxUp } : canvas.handlers)}
         style={{
           position: 'absolute', left: 0, top: 0, width: WORLD, height: WORLD,
           x: canvas.x, y: canvas.y, scale: canvas.scale, transformOrigin: '0 0',
-          cursor: 'grab', touchAction: 'none', ...pinPattern(),
+          cursor: boxing ? 'default' : 'grab', touchAction: 'none', ...pinPattern(),
         }}
       >
+      {/* the selection box being dragged */}
+      {marquee && (
+        <div
+          style={{
+            position: 'absolute', zIndex: 960, pointerEvents: 'none', borderRadius: 4,
+            left: ORIGIN + Math.min(marquee.x0, marquee.x1), top: ORIGIN + Math.min(marquee.y0, marquee.y1),
+            width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0),
+            background: 'rgba(173, 0, 26, .06)', border: `${1.5 / canvas.scale.get()}px solid rgba(173, 0, 26, .7)`, boxSizing: 'border-box',
+          }}
+        />
+      )}
       {/* groups */}
       <AnimatePresence>
         {groups.map((g) => {
@@ -773,8 +972,9 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
             initial={{ x: ORIGIN + (it.from ?? it).x, y: ORIGIN + (it.from ?? it).y, scale: 0.6, opacity: 0 }}
             exit={{ scale: 0.6, opacity: 0, transition: { duration: 0.3 } }}
             animate={{ x: ORIGIN + it.x, y: ORIGIN + it.y, scale: dragging === it.id ? 1.05 : 1, opacity: hidden.includes(it.id) ? 0 : 1 }}
-            transition={dragging === it.id || (movingGroup && movingGroup.split(',').includes(it.id)) ? { x: { duration: 0 }, y: { duration: 0 }, scale: { duration: 0.2 } } : { duration: 0.6, ease }}
-            style={{ position: 'absolute', left: 0, top: 0, width: it.w, height: it.h, zIndex: it.z, cursor: 'grab', touchAction: 'none' }}
+            transition={dragging === it.id || resizing || (movingGroup && movingGroup.split(',').includes(it.id)) ? { x: { duration: 0 }, y: { duration: 0 }, scale: { duration: 0.2 } } : { duration: 0.6, ease }}
+            // the hand tool reaches past the pieces to move the board
+            style={{ position: 'absolute', left: 0, top: 0, width: it.w, height: it.h, zIndex: it.z, cursor: 'grab', touchAction: 'none', pointerEvents: tool === 'hand' || spaceHeld ? 'none' : undefined }}
           >
             {/* selected pieces get a red outline that hugs their shape, and it breathes while Studio listens */}
             <motion.div
@@ -810,6 +1010,27 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
         )
       })}
       </AnimatePresence>
+
+      {/* resize handles on a single selected piece, above everything so they can always be caught */}
+      {selected.length === 1 && !merging && (phase.k === 'idle' || phase.k === 'done') && (() => {
+        const it = items.find((i) => i.id === selected[0])
+        if (!it) return null
+        const k = 1 / canvas.scale.get() // handles stay the same size on screen at any zoom
+        return (['nw', 'ne', 'sw', 'se'] as const).map((c) => (
+          <div
+            key={c}
+            aria-label={`Resize from the ${c} corner`}
+            onPointerDown={(e) => startResize(it.id, c, e)}
+            style={{
+              position: 'absolute', zIndex: 955, width: 28 * k, height: 28 * k, display: 'grid', placeItems: 'center',
+              left: ORIGIN + (c.endsWith('w') ? it.x : it.x + it.w) - 14 * k, top: ORIGIN + (c.startsWith('n') ? it.y : it.y + it.h) - 14 * k,
+              cursor: c === 'nw' || c === 'se' ? 'nwse-resize' : 'nesw-resize', touchAction: 'none',
+            }}
+          >
+            <span style={{ width: 12 * k, height: 12 * k, borderRadius: 3 * k, background: '#fff', border: `${1.5 * k}px solid #151413`, boxSizing: 'border-box', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+          </div>
+        ))
+      })()}
 
       {/* frame labels ride above the pieces so they can always be grabbed or tapped */}
       <AnimatePresence>
@@ -870,9 +1091,87 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
         })}
       </AnimatePresence>
 
-      <AnimatePresence>{notes.map((n) => <VoiceNote key={n.id} x={ORIGIN + n.x} y={ORIGIN + n.y} text={n.text} audio={n.audio} replies={n.replies} recordingBy={n.recordingBy}
-            replyMic={<Mic size={28} holding={phase.k === 'listening' && n.recordingBy === 'You'} onHoldStart={() => startReply(n.id)} onHoldEnd={endListening} onArm={setArmed} />}
-            onDelete={() => deleteNote(n.id)} onMove={(dx, dy) => moveNote(n.id, dx, dy)} />)}</AnimatePresence>
+      {/* a comment left on a piece is tied to it by a line, dot to dot */}
+      <svg width={WORLD} height={WORLD} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', zIndex: 24, overflow: 'visible' }}>
+        {notes.map((n) => {
+          const piece = n.on ? items.find((i) => i.id === n.on) : undefined
+          if (!piece) return null
+          const f = visibleRect(piece) // the sticker itself, not its transparent box
+          // The line leaves the middle of the comment's side that faces the piece, and lands on
+          // the piece's facing side wherever is nearest; it stops short of both. Side by side it
+          // runs across, one above the other it runs down. Too close to fit a line, there's none.
+          const GAP = 6
+          const c = { x: n.x, y: n.y, ...(cardSize[n.id] ?? { w: 256, h: COMMENT_MID * 2 }) }
+          const across = Math.max(f.x - (c.x + c.w), c.x - (f.x + f.w))
+          const down = Math.max(f.y - (c.y + c.h), c.y - (f.y + f.h))
+          if (across < GAP * 3 && down < GAP * 3) return null
+          let d: string, ends: [number, number][]
+          if (across >= down) {
+            const right = c.x >= f.x + f.w
+            const ax = (right ? c.x - GAP : c.x + c.w + GAP) + ORIGIN, ay = c.y + c.h / 2 + ORIGIN
+            const bx = (right ? f.x + f.w + GAP : f.x - GAP) + ORIGIN
+            const by = Math.min(Math.max(ay - ORIGIN, f.y + f.h * 0.1), f.y + f.h * 0.9) + ORIGIN
+            const mx = (ax + bx) / 2
+            d = `M${bx} ${by} C${mx} ${by}, ${mx} ${ay}, ${ax} ${ay}`
+            ends = [[bx, by], [ax, ay]]
+          } else {
+            const below = c.y >= f.y + f.h
+            const ax = c.x + c.w / 2 + ORIGIN, ay = (below ? c.y - GAP : c.y + c.h + GAP) + ORIGIN
+            const by = (below ? f.y + f.h + GAP : f.y - GAP) + ORIGIN
+            const bx = Math.min(Math.max(ax - ORIGIN, f.x + f.w * 0.1), f.x + f.w * 0.9) + ORIGIN
+            const my = (ay + by) / 2
+            d = `M${bx} ${by} C${bx} ${my}, ${ax} ${my}, ${ax} ${ay}`
+            ends = [[bx, by], [ax, ay]]
+          }
+          return (
+            <g key={n.id} stroke="var(--bg-default)" fill="var(--bg-default)">
+              <path d={d} strokeWidth={2.5} fill="none" /* a touch heavier: the light colour needs it to read */ />
+              {ends.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={5} stroke="none" />)}
+            </g>
+          )
+        })}
+      </svg>
+
+      {/* marker lines */}
+      {strokes.length > 0 && (
+        <svg width={WORLD} height={WORLD} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', zIndex: 20, overflow: 'visible' }}>
+          <defs>
+            {/* pencil grain: the line's edge roughened and its body flecked */}
+            <filter id="pencil" x="-5%" y="-5%" width="110%" height="110%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" result="grain" />
+              <feDisplacementMap in="SourceGraphic" in2="grain" scale="2.5" result="rough" />
+              <feComposite in="rough" in2="grain" operator="in" />
+            </filter>
+          </defs>
+          {strokes.map((st) => (
+            <path
+              key={st.id}
+              d={pathOf(st.points)}
+              stroke={st.ink}
+              strokeWidth={st.width}
+              strokeOpacity={st.kind === 'highlighter' ? 0.4 : st.kind === 'pencil' ? 0.85 : 1}
+              filter={st.kind === 'pencil' ? 'url(#pencil)' : undefined}
+              strokeLinecap={st.kind === 'highlighter' ? 'square' : 'round'}
+              strokeLinejoin="round"
+              fill="none"
+            />
+          ))}
+        </svg>
+      )}
+
+      <AnimatePresence>{notes.map((n) => n.kind === 'text' ? (
+        <TextNote key={n.id} x={ORIGIN + n.x} y={ORIGIN + n.y} author={n.author} text={n.text} replies={n.replies} editing={n.editing} fromVoice={n.fromVoice}
+          onChange={(t) => setNoteText(n.id, t)} onDelete={() => deleteNote(n.id)} onMove={(dx, dy) => moveNote(n.id, dx, dy)}
+          typingBy={n.recordingBy} onPost={() => teammateReplies(n.id)} onReply={(t) => addReply(n.id, t)}
+          onMeasure={(w, h) => setCardSize((m) => (m[n.id]?.w === w && m[n.id]?.h === h ? m : { ...m, [n.id]: { w, h } }))} />
+      ) : (
+        <VoiceNote key={n.id} x={ORIGIN + n.x} y={ORIGIN + n.y} author={n.author} text={n.text} audio={n.audio} replies={n.replies} recordingBy={n.recordingBy}
+            // the web has no mic: replies come from the phone, and a note can become text instead
+            replyMic={web ? undefined : <Mic size={28} holding={phase.k === 'listening' && n.recordingBy === 'You'} onHoldStart={() => startReply(n.id)} onHoldEnd={endListening} onArm={setArmed} />}
+            onConvert={web ? () => convertNote(n.id) : undefined}
+            onDelete={() => deleteNote(n.id)} onMove={(dx, dy) => moveNote(n.id, dx, dy)}
+            onMeasure={(w, h) => setCardSize((m) => (m[n.id]?.w === w && m[n.id]?.h === h ? m : { ...m, [n.id]: { w, h } }))} />
+      ))}</AnimatePresence>
 
       {/* a merge being tried: the pieces fly in from where they sat and settle together */}
       <AnimatePresence>
@@ -925,6 +1224,20 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
       </AnimatePresence>
       </motion.div>
 
+      {/* on the web, the board's name and who's on it sit top left where Back would be */}
+      {web && (
+        <div style={{ position: 'absolute', left: 16, top: 'var(--ui-top)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 12, height: 44, padding: '0 14px 0 6px', borderRadius: 999, background: 'rgba(252,250,247,.9)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+          <span style={{ display: 'flex' }}>
+            {['You', 'Maya', 'Jules', 'Ren'].map((who, i) => (
+              <span key={who} style={{ marginLeft: i ? -10 : 0, borderRadius: 999, boxShadow: '0 0 0 2px var(--bg-canvas)' }}>
+                <Face who={who} size={32} />
+              </span>
+            ))}
+          </span>
+          <span style={{ fontSize: 18, fontWeight: 600 }}>Ads</span>
+          <span className="t-label" style={{ color: 'var(--text-secondary)' }}>14 pins · 3 collaborators</span>
+        </div>
+      )}
       {/* the web is only the board, so there's nowhere to go back to */}
       {!web && (
         <IconButton label="Back" onClick={onBack} style={{ position: 'absolute', left: 8, top: 'var(--ui-top)', zIndex: 50 }}>
@@ -967,7 +1280,7 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
 
       {/* one mic, always bottom right: with nothing selected it talks to the whole board,
           with pieces selected it opens into their suggestions */}
-      {phase.k !== 'thinking' && !explore && !shareOpen && !merging && !direction /* sheets cover the dock */ && (
+      {!web && phase.k !== 'thinking' && !explore && !shareOpen && !merging && !direction /* sheets cover the dock */ && (
         <Dock
           open={selected.length > 0 && (phase.k === 'idle' || phase.k === 'listening')}
           suggestions={suggestionsFor(selected.length)}
@@ -978,6 +1291,38 @@ export default function Board({ onBack, openDirection = false }: { onBack: () =>
           active={noteMode ? 'Add a note' : undefined}
           mic={<Mic size={selected.length ? 44 : 56} holding={phase.k === 'listening'} onHoldStart={() => startListening(selected)} onHoldEnd={endListening} onArm={setArmed} />}
         />
+      )}
+
+      {/* the web: tools along the bottom, and what you can do with the selection above them */}
+      {web && !merging && !direction && (
+        <>
+          <SelectionBar count={phase.k === 'idle' ? selected.length : 0} suggestions={suggestionsFor(selected.length)} onSuggest={webSuggest} onDelete={() => deletePieces(selected)} />
+          {/* while the marker is out, drags draw instead of moving things */}
+          {tool === 'pen' && (
+            <div onPointerDown={penDown} onPointerMove={penMove} onPointerUp={penUp} onPointerCancel={penUp} style={{ position: 'absolute', inset: 0, zIndex: 45, cursor: pen === 'eraser' ? 'cell' : 'crosshair', touchAction: 'none' }} />
+          )}
+          <Toolbar
+            tool={tool}
+            onTool={(t) => {
+              setTool(t)
+              if (t === 'pen') setSelected([])
+            }}
+            pen={pen}
+            onPen={setPen}
+            ink={ink}
+            onInk={setInk}
+            width={penWidth}
+            onWidth={setPenWidth}
+            selected={selected.length}
+            onNote={() => addTextNote(selected.length === 1 ? selected[0] : undefined)}
+            onPins={openPins}
+            onFrame={() => webSuggest({ label: 'Group', phrase: 'Group these' })}
+            onMerge={() => webSuggest({ label: 'Merge', phrase: 'Merge these together' })}
+            onColours={() => webSuggest({ label: 'Pull colours', phrase: 'Pull the colours from this' })}
+            onDirection={() => { setSelected([]); setDirection(true) }}
+            onUndo={undo}
+          />
+        </>
       )}
 
       <div style={{ position: 'absolute', left: 'var(--ui-x)', right: 'var(--ui-x)', zIndex: 46, pointerEvents: 'none', ...(slot === 'top' && phase.k !== 'done' ? { top: 'var(--ui-top2)' } : { bottom: 'var(--ui-low)' }) /* small confirmations always sit low */ }}>

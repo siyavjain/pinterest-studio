@@ -14,17 +14,21 @@ export type Part = Look & { id: string; x: number; y: number; w: number; h: numb
 
 /** What a piece looks like, without its board behaviour. Merges draw their parts with it. */
 export default function PieceContent({ it }: { it: Look }) {
-  if (it.parts)
+  if (it.parts) {
+    // the size the parts were laid out in
+    const W = Math.max(...it.parts.map((p) => p.x + p.w)), H = Math.max(...it.parts.map((p) => p.y + p.h))
     return (
       // no card behind a merge: just its pieces, with one soft shadow so they read as one thing
       <div style={{ position: 'relative', width: '100%', height: '100%', filter: 'drop-shadow(0 10px 14px rgba(0,0,0,.16))' }}>
         {it.parts.map((p) => (
-          <div key={p.id} style={{ position: 'absolute', left: p.x, top: p.y, width: p.w, height: p.h, transform: `rotate(${p.r}deg)` }}>
+          // placed as fractions of the merge's own size, so it can be resized like any piece
+          <div key={p.id} style={{ position: 'absolute', left: `${(p.x / W) * 100}%`, top: `${(p.y / H) * 100}%`, width: `${(p.w / W) * 100}%`, height: `${(p.h / H) * 100}%`, transform: `rotate(${p.r}deg)` }}>
             <PieceContent it={p} />
           </div>
         ))}
       </div>
     )
+  }
   if (it.colour)
     return <div style={{ width: '100%', height: '100%', borderRadius: 999, background: it.colour, border: '3px solid #fff', boxSizing: 'border-box', boxShadow: '0 4px 12px rgba(0,0,0,.12)' }} />
   if (it.crop)
