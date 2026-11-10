@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 
 type Key = 'home' | 'search' | 'studio' | 'profile'
-type Props = { active: Key; onHome: () => void; onStudio: () => void }
+type Props = { active: Key; brand?: boolean; onHome: () => void; onStudio: () => void } // brand: the active bubble in Pinterest red
 
 // Glyphs exported from the Figma "Nav Bar" component (20×20 icon frame, 1.5 stroke)
 export const GLYPHS: Record<Key, { w: number; h: number; d: string[] }> = {
@@ -36,7 +36,7 @@ export const GLYPHS: Record<Key, { w: number; h: number; d: string[] }> = {
 
 const ORDER: Key[] = ['home', 'search', 'studio', 'profile']
 
-export default function NavBar({ active, onHome, onStudio }: Props) {
+export default function NavBar({ active, brand, onHome, onStudio }: Props) {
   return (
     // 272×60 row, 24 gap, every slot 50×60; bubbles sit on the bottom edge
     <nav
@@ -64,7 +64,7 @@ export default function NavBar({ active, onHome, onStudio }: Props) {
           >
             <motion.span
               initial={false}
-              animate={{ height: on ? 60 : 50, backgroundColor: on ? '#151413' : '#e9e4df' }}
+              animate={{ height: on ? 60 : 50, backgroundColor: on ? (brand ? '#ad001a' : '#151413') : '#e9e4df' }}
               transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
               style={{ position: 'absolute', left: 0, bottom: 0, width: 50, borderRadius: 999 }}
             />
@@ -72,7 +72,7 @@ export default function NavBar({ active, onHome, onStudio }: Props) {
             <span style={{ position: 'absolute', left: 15, top: 25, width: 20, height: 20, display: 'grid', placeItems: 'center' }}>
               <svg width={g.w} height={g.h} viewBox={`0 0 ${g.w} ${g.h}`} fill="none">
                 {g.d.map((d) => (
-                  <path key={d} d={d} stroke={on ? '#ddd6ce' : '#111111'} strokeWidth={1.5} strokeLinecap="round" />
+                  <path key={d} d={d} stroke={on ? (brand ? '#fcfaf7' : '#ddd6ce') : '#111111'} strokeWidth={1.5} strokeLinecap="round" />
                 ))}
               </svg>
             </span>

@@ -1,6 +1,8 @@
 import { asset } from '../components/asset'
 import { RADIUS } from './ingredients'
 import type { Shape } from './ingredients'
+import Sphere from './Sphere'
+import type { Material } from './Sphere'
 
 /** How a board piece is drawn: an image, a shaped crop of one, a colour chip, or a merge of parts. */
 export type Look = {
@@ -8,6 +10,7 @@ export type Look = {
   crop?: { box: [number, number, number, number]; shape: Shape }
   colour?: string
   parts?: Part[]
+  material?: Material // a colour-and-material sphere
 }
 // one piece inside a merge, placed relative to the merge's top-left, turned r degrees
 export type Part = Look & { id: string; x: number; y: number; w: number; h: number; r: number; label?: string }
@@ -29,6 +32,7 @@ export default function PieceContent({ it }: { it: Look }) {
       </div>
     )
   }
+  if (it.material) return <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}><Sphere m={it.material} size={Math.round(56)} /></div>
   if (it.colour)
     return <div style={{ width: '100%', height: '100%', borderRadius: 999, background: it.colour, border: '3px solid #fff', boxSizing: 'border-box', boxShadow: '0 4px 12px rgba(0,0,0,.12)' }} />
   if (it.crop)

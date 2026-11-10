@@ -5,16 +5,17 @@ import { useWeb } from '../components/view'
 
 /** Bottom sheet: slides up, swipe down (or tap the scrim) to close.
  *  With handleOnly, only the top strip starts the swipe so the content can scroll. */
-export default function Sheet({ open, onClose, children, height, handleOnly }: {
+export default function Sheet({ open, onClose, children, height, handleOnly, hostId = 'overlay' }: {
   open: boolean
   onClose: () => void
   children: ReactNode
   height?: number
   handleOnly?: boolean
+  hostId?: string // where it opens: the board's overlay, or a layer above something covering the board
 }) {
   const controls = useDragControls()
   const web = useWeb()
-  const host = document.getElementById('overlay')
+  const host = document.getElementById(hostId)
   if (!host) return null
 
   // on the web the same content opens as a panel down the right side

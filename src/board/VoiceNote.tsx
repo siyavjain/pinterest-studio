@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { PauseIcon, PlayIcon, TrashIcon } from '../components/Icons'
 import type { Recording } from './voice/useSpeech'
-import Squiggle from './Squiggle'
+import Squiggle, { VoiceWave } from './Squiggle'
 import Face from '../components/Face'
 
 export type Reply = { id: string; author: string; text: string; audio?: Recording }
@@ -261,7 +261,8 @@ export default function VoiceNote({ x, y, author = 'You', text, audio, replies, 
                         >
                           <Avatar who={recordingBy} size={24} />
                           <span style={{ whiteSpace: 'nowrap' }}>{recordingBy === 'You' ? 'Recording your reply…' : `${recordingBy} is recording…`}</span>
-                          <Squiggle width={60} height={18} strokeWidth={1.5} />
+                          {/* your own reply follows your voice; a teammate's just flows */}
+                          {recordingBy === 'You' ? <VoiceWave width={60} height={18} /> : <Squiggle width={60} height={18} strokeWidth={1.5} />}
                         </motion.div>
                       )}
                     </AnimatePresence>

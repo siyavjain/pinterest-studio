@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { sayWord, startLevel, stopLevel } from './level'
 
 // Minimal typing for the Web Speech API (Chrome / Safari)
 type Recognition = {
@@ -45,6 +46,7 @@ export function useSpeech() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       if (!holding.current) return stream.getTracks().forEach((t) => t.stop()) // let go already: release the mic
+      startLevel(stream) // the wave follows how loud you are
       const m = new MediaRecorder(stream)
       chunks.current = []
       m.ondataavailable = (e) => e.data.size && chunks.current.push(e.data)
@@ -58,6 +60,7 @@ export function useSpeech() {
 
   const finishRecording = (keep: boolean): Promise<Recording | undefined> => {
     holding.current = false
+    stopLevel()
     const m = recorder.current
     recorder.current = null
     if (!m) return Promise.resolve(undefined)
@@ -79,6 +82,7 @@ export function useSpeech() {
       text.current = words.slice(0, n).join(' ')
       setTranscript(text.current)
       setHeard(true)
+      sayWord() // no mic: each word is a burst on the wave
       if (n === words.length && sim.current) clearInterval(sim.current)
     }, 190)
   }

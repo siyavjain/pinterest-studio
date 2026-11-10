@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import PieceContent from './Piece'
+import { motion } from 'framer-motion'
 import type { Look, Part } from './Piece'
-import { CloseIcon } from '../components/Icons'
-import { IconButton } from '../components/Button'
+import { CloseIcon, DownloadIcon, PlusIcon } from '../components/Icons'
+import { IconButton, Pill } from '../components/Button'
+import ShareSheet from './ShareSheet'
+import { downloadConceptPdf } from './conceptPdf'
 import { useWeb } from '../components/view'
+import { asset } from '../components/asset'
+import Grain from '../components/Grain'
+import Sphere, { colourName } from './Sphere'
 
 // The board, summed up once it's done: what it shows, its colours, and which kinds
 // of pins to go after for this concept.
@@ -16,28 +20,18 @@ type Piece = Look & { id: string; x: number; y: number; w: number; h: number; la
 const KINDS = [
   { key: 'type', test: /ribbon|scary/, name: 'Loud type stickers', look: 'Wavy, hand-set words in candy colours', short: 'loud type',
     texture: 'Puffy ink', material: 'Sticker vinyl', finish: 'Die-cut white edge', surface: [0.75, 0.55, 0.15] },
-  { key: 'people', test: /hand|cap|head-hill/, name: 'Hands & faces', look: 'Gestures and portraits, cropped playfully', short: 'playful hands',
+  { key: 'people', test: /hand|cap|head-hill|image (34|37|40|44|45)/, name: 'Hands & faces', look: 'Gestures and portraits, cropped playfully', short: 'playful hands',
     texture: 'Photo grain', material: 'Photo print', finish: 'Rough scissor cut', surface: [0.35, 0.3, 0.55] },
   { key: 'florals', test: /flower|bloom|ws-14|poppy|peony|gardener|bags|tulip|phone|wanderlust|traffic|carrot/, name: 'Cut-out florals', look: 'Single blooms cut clean, no backdrop', short: 'cut florals',
     texture: 'Petal veins', material: 'Petals & paper', finish: 'Clean cut, soft shadow', surface: [0.25, 0.7, 0.3] },
   { key: 'gradients', test: /gradient|blob/, name: 'Soft gradients', look: 'Blurry, grainy fields of colour', short: 'soft gradients',
     texture: 'Airbrush haze', material: 'Light & blur', finish: 'Edgeless, fades out', surface: [0.55, 0.15, 0.75] },
-  { key: 'nature', test: /meadow|hill|nature|grass|sit|lamb/, name: 'Open nature', look: 'Grass, hills and sky as cut-outs', short: 'open nature',
+  { key: 'nature', test: /meadow|hill|nature|grass|sit|lamb|image (35|36|38|39|41|42)/, name: 'Open nature', look: 'Grass, hills and sky as cut-outs', short: 'open nature',
     texture: 'Grass grain', material: 'Collage paper', finish: 'Torn, organic edge', surface: [0.1, 0.45, 0.85] },
 ] as const
 
-// plain names for the palette, so the summary can say it out loud
-const NAMED: [string, number[]][] = [
-  ['violet', [123, 92, 255]], ['lime', [200, 240, 46]], ['pink', [244, 166, 196]], ['orange', [255, 122, 61]],
-  ['moss', [62, 92, 42]], ['red', [200, 40, 40]], ['sky blue', [143, 180, 217]], ['cream', [240, 230, 210]],
-]
-const nameOf = (hex: string) => {
-  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
-  return NAMED.reduce((best, n) => {
-    const d = n[1].reduce((s, v, i) => s + (v - c[i]) ** 2, 0)
-    return d < best.d ? { n: n[0], d } : best
-  }, { n: 'cream', d: Infinity }).n
-}
+// plain names for the palette, so the summary can say it out loud (the same names as the spheres)
+const nameOf = (hex: string) => colourName(hex).toLowerCase()
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 // where the board sits between each pair: 0 = left word, 1 = right word
@@ -45,30 +39,6 @@ const AXES = [['Matte', 'Glossy'], ['Flat', 'Dimensional'], ['Clean', 'Grainy']]
 // how much of the board each palette colour carries, in order
 const SHARE = [34, 24, 18, 14, 10]
 const ROLE = ['Lead', 'Pop', 'Pop', 'Accent', 'Accent']
-const GROUND = '#f7f4ee'
-
-/** Each part of the card: a heading in the app's type, then its content. Space does the separating. */
-const Section = ({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) => (
-  <section style={{ marginTop: 36 }}>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 32, marginBottom: 12 }}>
-      <span style={{ fontSize: 18, lineHeight: '24px', fontWeight: 600 }}>{title}</span>
-      {aside}
-    </div>
-    {children}
-  </section>
-)
-
-/** The small pill used for asides, in the Pill's colours. */
-const Chip = ({ children, on, onClick }: { children: React.ReactNode; on?: boolean; onClick?: () => void }) => (
-  <motion.button
-    whileTap={{ scale: 0.95 }}
-    onClick={onClick}
-    animate={{ backgroundColor: on ? '#ad001a' : '#e9e4df', color: on ? '#ffffff' : '#111111' }}
-    style={{ height: 32, padding: '0 14px', borderRadius: 999, fontSize: 13, whiteSpace: 'nowrap' }}
-  >
-    {children}
-  </motion.button>
-)
 
 // dark text on light swatches, light on dark
 const ink = (hex: string) => {
@@ -76,13 +46,35 @@ const ink = (hex: string) => {
   return r * 0.299 + g * 0.587 + b * 0.114 > 150 ? 'rgba(17,17,17,.78)' : 'rgba(255,255,255,.92)'
 }
 const MUTED = 'var(--text-secondary)'
-const TILE = 'var(--bg-default)'
 
-const HERO_W = 358
-const HERO_H = 310
+// What this board's concept card says and shows (the Figma "Concept card · full page")
+const CONCEPT = {
+  title: 'Organic Fluidity',
+  about: 'A dreamlike exploration of nature, movement, and human connection. Soft, flowing forms, translucent textures, and botanical greens blend with aquatic blues to create an ethereal visual language that feels fresh, immersive, and effortlessly organic.',
+  wash: 'Sky leaves',
+  materials: [
+    { name: 'Sheer Fabric', src: 'image 49', size: 140, at: [20, 130] },
+    { name: 'Water', src: 'image 56', size: 101, at: [172, 100] },
+    { name: 'Reflective', src: 'image 54', size: 119, at: [252, 196] },
+    { name: 'Foliage', src: 'Leaf', size: 84, at: [70, 296] },
+  ],
+  checklist: ['Soft, flowing forms', 'Translucent, layered textures', 'Botanical greens with aquatic blues', 'A human touch: hands or faces'],
+  textures: [
+    { name: 'Shadow Play', src: 'Person leaf', at: [28, 150], turn: -4, label: 'top' },
+    { name: 'Translucence', src: 'Sky leaves', at: [196, 180], turn: 3, label: 'top' },
+    { name: 'Veined Grain', src: 'Dry leaf', at: [36, 320], turn: -2, label: 'bottom' },
+    { name: 'Organic Overgrowth', src: 'Window', at: [190, 340], turn: 4, label: 'bottom' },
+  ],
+} as const
+
 const ease = [0.22, 1, 0.36, 1] as const
 
-export type Direction = { title: string; keep: string[]; drop: string[]; dropKeys: string[]; palette: string[]; savedAt: number }
+export type Check = { text: string; done: boolean }
+export type Direction = {
+  title: string; keep: string[]; drop: string[]; dropKeys: string[]; palette: string[]; savedAt: number
+  statement?: string // the concept or artist statement, in the user's words
+  checklist?: Check[] // what they want the concept to have
+}
 
 export default function DirectionCard({ items, saved, onClose, onSave }: {
   items: Piece[]
@@ -99,25 +91,20 @@ export default function DirectionCard({ items, saved, onClose, onSave }: {
     .filter((c) => c.pieces.length)
     .sort((a, b) => b.pieces.length - a.pieces.length)
 
-  const [dropped, setDropped] = useState<string[]>(saved?.dropKeys ?? [])
+  const [dropped] = useState<string[]>(saved?.dropKeys ?? [])
   const kept = counts.filter((c) => !dropped.includes(c.kind.key))
-  const [a, b] = kept.length ? kept : counts
-  const [title, setTitle] = useState(saved?.title ?? cap(b ? `${a.kind.short} & ${b.kind.short}` : a?.kind.short ?? 'New direction'))
-  const [copied, setCopied] = useState(false)
+  // older saves carry a name made up from the kinds of pin ("Cut florals & loud type"): this board's
+  // concept is Organic Fluidity, so those start from that; a name the user typed themselves stays
+  const autoNames = new Set([...KINDS.map((k) => cap(k.short)), ...KINDS.flatMap((x) => KINDS.map((y) => cap(`${x.short} & ${y.short}`)))])
+  const [title, setTitle] = useState(!saved?.title || autoNames.has(saved.title) ? CONCEPT.title : saved.title)
+  const [statement, setStatement] = useState(saved?.statement ?? '')
+  const [checklist, setChecklist] = useState<Check[]>(saved?.checklist ?? CONCEPT.checklist.map((text) => ({ text, done: false })))
+  const [newItem, setNewItem] = useState('')
+  const [sharing, setSharing] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [kept2, setKept2] = useState(false) // saved from the share sheet
 
-  const colourWords = [...new Set(palette.map(nameOf))].slice(0, 3)
-  const summary =
-    `${pieces.length} pieces that lean on ${a?.kind.short ?? 'collage'}${b ? ` and ${b.kind.short}` : ''}, ` +
-    `set on a calm cream ground` + (colourWords.length ? ` with ${colourWords.slice(0, -1).join(', ')}${colourWords.length > 1 ? ' and ' : ''}${colourWords[colourWords.length - 1]} pops.` : '.')
-
-  // the board in miniature, fitted into the hero
-  const l = Math.min(...pieces.map((p) => p.x)), t = Math.min(...pieces.map((p) => p.y))
-  const bw = Math.max(...pieces.map((p) => p.x + p.w)) - l, bh = Math.max(...pieces.map((p) => p.y + p.h)) - t
-  // on the web the hero is a tall column beside the details instead of a banner on top
   const web = useWeb()
-  const HW = web ? 460 : HERO_W, HH = web ? 640 : HERO_H
-  const s = Math.max(HW / bw, (HH + 20) / bh) // fill the hero; the far edges can crop
-  const ox = (HW - bw * s) / 2, oy = (HH - (web ? 0 : 30) - bh * s) / 2
 
   // surface: the kept kinds averaged, weighted by how much of the board they are
   const weight = kept.reduce((n, c) => n + c.pieces.length, 0) || 1
@@ -134,26 +121,23 @@ export default function DirectionCard({ items, saved, onClose, onSave }: {
   useEffect(() => {
     const t = setTimeout(() => {
       save.current({
-        title: title.trim() || 'Untitled direction', palette,
+        title: title.trim() || 'Untitled concept', palette,
         keep: kept.map((c) => c.kind.name),
         drop: counts.filter((c) => dropped.includes(c.kind.key)).map((c) => c.kind.name),
-        dropKeys: dropped, savedAt: Date.now(),
+        dropKeys: dropped, savedAt: Date.now(), statement, checklist,
       })
     }, 400)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, dropKey])
-
-  const copy = () => {
-    navigator.clipboard?.writeText(palette.join(' ')).catch(() => {})
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1400)
+  }, [title, dropKey, statement, checklist])
+  const addItem = () => {
+    const text = newItem.trim()
+    if (!text) return
+    setChecklist((c) => [...c, { text, done: false }])
+    setNewItem('')
   }
 
   const swatches = palette.slice(0, 5)
-  const textures = kept.slice(0, 6)
-  // never a lone tile on the last row; the web has room for one row
-  const textureCols = web && textures.length <= 5 ? textures.length : textures.length <= 2 || textures.length === 4 ? 2 : 3
 
   // the name's box grows with it, so a one-line name leaves no gap
   const titleBox = useRef<HTMLTextAreaElement>(null)
@@ -164,209 +148,272 @@ export default function DirectionCard({ items, saved, onClose, onSave }: {
     el.style.height = `${el.scrollHeight}px`
   }, [title])
 
+  const kicker = (text: string) => <div style={{ fontSize: 13, lineHeight: '18px', color: MUTED }}>{text}</div>
+  const heading = (text: string) => (
+    <h2 style={{ margin: '4px 0 0', fontSize: 40, lineHeight: '42px', fontWeight: 600, letterSpacing: '-0.03em', color: '#111' }}>{text}</h2>
+  )
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      transition={{ duration: 0.4 }}
       onPointerDown={(e) => e.stopPropagation()}
-      data-scroll // the board's trackpad panning leaves this alone, so the card scrolls
-      style={{ position: 'absolute', inset: 0, zIndex: 80, touchAction: 'pan-y', overscrollBehavior: 'contain', background: 'rgba(233,228,223,.78)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', overflowY: 'auto', scrollbarWidth: 'none' }}
+      style={{ position: 'absolute', inset: 0, zIndex: 80 }}
     >
-      <motion.article
-        initial={{ y: 70, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 40, opacity: 0 }}
-        transition={{ duration: 0.7, ease }}
-        style={{
-          position: 'relative', boxSizing: 'border-box', borderRadius: 'var(--radius-sheet)', background: 'var(--bg-canvas)', boxShadow: '0 30px 70px -30px rgba(40,30,20,.25)',
-          ...(web
-            ? { width: 'min(1080px, calc(100% - 64px))', margin: '32px auto', padding: 16, display: 'grid', gridTemplateColumns: `${HW}px minmax(0, 1fr)`, columnGap: 40, alignItems: 'start' }
-            : { width: HERO_W + 20, margin: '62px auto 48px', padding: 10 }),
-        }}
-      >
-        {/* hero: the board itself, fading into the card */}
-        <div style={{ position: web ? 'sticky' : 'relative', top: 16 }}>
-          <div
-            style={{
-              position: 'relative', height: HH, borderRadius: 'var(--radius-card)', overflow: 'hidden',
-              background: `radial-gradient(120% 80% at 20% 0%, ${palette[0] ?? '#e8e2ff'}2e, transparent 60%), radial-gradient(100% 70% at 90% 20%, ${palette[1] ?? '#f2f8d8'}3a, transparent 60%), var(--bg-canvas)`,
-              ...(!web && { WebkitMaskImage: 'linear-gradient(to bottom, #000 64%, transparent)', maskImage: 'linear-gradient(to bottom, #000 64%, transparent)' }),
-            }}
+    {/* the share sheet opens here, above the card rather than under it */}
+    <div id="concept-overlay" style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }} />
+    <div
+      data-scroll // the board's trackpad panning leaves this alone, so the card scrolls
+      style={{ position: 'absolute', inset: 0, touchAction: 'pan-y', overscrollBehavior: 'contain', background: 'var(--bg-canvas)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none' }}
+    >
+      {/* close stays in reach the whole way down */}
+      <div style={{ position: 'sticky', top: 0, height: 0, zIndex: 6 }}>
+        <IconButton label="Close concept card" onClick={onClose} style={{ position: 'absolute', right: web ? 24 : 12, top: web ? 24 : 'var(--ui-top)', background: 'rgba(252,250,247,.85)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}>
+          <CloseIcon />
+        </IconButton>
+      </div>
+
+      {/* the Figma "Concept card · full page": a 402-wide page, drawn larger on the web */}
+      <div style={{ width: 402, margin: '0 auto', zoom: web ? 1.4 : 1 } as React.CSSProperties}>
+        {/* ---------- hero: a blurred, grainy wash of the board with the concept said in the middle ---------- */}
+        <section style={{ position: 'relative', height: 483, overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', left: -60, top: -60, width: 522, height: 820, overflow: 'hidden' }}>
+            <img src={asset(CONCEPT.wash)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(40px)' }} />
+            <Grain opacity={0.3} />
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(252,250,247,.23)' }} />
+          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.8, ease }}
+            style={{ position: 'absolute', left: 39, top: 180, width: 324, display: 'grid', justifyItems: 'center', textAlign: 'center' }}
           >
-            {pieces.map((p, i) => (
+            <div style={{ fontSize: 13, lineHeight: '18px', color: 'rgba(17,17,17,.7)' }}>Concept</div>
+            {/* the name wraps and can be retyped */}
+            <textarea
+              aria-label="Concept name"
+              ref={titleBox}
+              value={title}
+              rows={1}
+              onChange={(e) => setTitle(e.target.value.replace(/\n/g, ' '))}
+              style={{ display: 'block', width: '100%', marginTop: 4, border: 0, outline: 'none', padding: 0, resize: 'none', background: 'none', font: 'inherit', fontSize: 38, lineHeight: '40px', fontWeight: 600, letterSpacing: '-0.03em', color: '#111', textAlign: 'center', overflow: 'hidden' }}
+            />
+            <p style={{ margin: '8px 0 0', fontSize: 15, lineHeight: '21px', fontWeight: 500, color: '#111' }}>{CONCEPT.about}</p>
+          </motion.div>
+        </section>
+
+        {/* ---------- 01 colour: torn paper strips ---------- */}
+        <section style={{ position: 'relative', marginTop: -40, padding: '60px 7px 20px', background: 'var(--bg-canvas)', clipPath: torn(3, 'top') }}>
+          <div style={{ padding: '0 13px' }}>
+            {kicker('01 - Color')}
+            {heading('The palette')}
+          </div>
+          <div style={{ display: 'flex', marginTop: 20, height: 222 }}>
+            {swatches.map((c, i) => (
               <motion.div
-                key={p.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 + i * 0.05, duration: 0.8, ease }}
-                style={{ position: 'absolute', left: ox + (p.x - l) * s, top: oy + (p.y - t) * s, width: p.w * s, height: p.h * s }}
+                key={c}
+                initial={{ flexGrow: 0, opacity: 0 }}
+                animate={{ flexGrow: SHARE[i], opacity: 1 }}
+                transition={{ delay: 0.2 + i * 0.07, duration: 0.9, ease }}
+                style={{
+                  flexBasis: 0, minWidth: 0, marginLeft: i ? -10 : 0, background: c, clipPath: torn(10 + i, 'sides'), transform: `rotate(${i % 2 ? 1.2 : -1}deg)`,
+                  position: 'relative', padding: '14px 14px 18px', boxSizing: 'border-box', color: ink(c),
+                }}
               >
-                <PieceContent it={p} />
+                <span style={{ fontSize: 11, lineHeight: '14px', letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{SHARE[i] >= 18 ? ROLE[i] : ''}</span>
+                {/* centred on the part you can see: the next strip covers this one's right 10px */}
+                <span style={{ position: 'absolute', left: 0, right: i < swatches.length - 1 ? 10 : 0, bottom: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', whiteSpace: 'nowrap', fontWeight: 300 }}>
+                  <span style={{ fontSize: 12, lineHeight: '18px' }}>{cap(nameOf(c))}</span>
+                  <span style={{ fontSize: 10, lineHeight: '18px', opacity: 0.85 }}>{c.toUpperCase()}</span>
+                </span>
               </motion.div>
             ))}
           </div>
-          {!web && (
-            <IconButton label="Close direction card" onClick={onClose} style={{ position: 'absolute', top: 12, right: 12 }}>
-              <CloseIcon />
-            </IconButton>
-          )}
-        </div>
-        {web && (
-          <IconButton label="Close direction card" onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, zIndex: 2 }}>
-            <CloseIcon />
-          </IconButton>
-        )}
+        </section>
 
-        <div style={web ? { padding: '28px 56px 16px 0' } : { padding: '0 16px 18px', marginTop: -18, position: 'relative' }}>
-          {/* the name wraps and can be retyped */}
-          <textarea
-            aria-label="Direction name"
-            ref={titleBox}
-            value={title}
-            rows={1}
-            onChange={(e) => setTitle(e.target.value.replace(/\n/g, ' '))}
-            style={{ display: 'block', width: '100%', marginTop: 0, border: 0, outline: 'none', padding: 0, resize: 'none', background: 'none', font: 'inherit', fontSize: web ? 44 : 32, lineHeight: web ? '50px' : '38px', fontWeight: 600, letterSpacing: '-0.02em', color: '#111', overflow: 'hidden' }}
-          />
-          <p style={{ margin: '10px 0 0', fontSize: 15, lineHeight: '22px', color: MUTED, textWrap: 'pretty' } as React.CSSProperties}>{summary}</p>
+        {/* ---------- 02 material: photo spheres, each named for what it feels like ---------- */}
+        <section style={{ position: 'relative', height: 410, padding: '20px 20px 0', boxSizing: 'border-box' }}>
+          {kicker('02 - Material')}
+          {heading('What it’s made of')}
+          {CONCEPT.materials.map((m, i) => (
+            <motion.div
+              key={m.name}
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 160, damping: 16, delay: 0.3 + i * 0.08 }}
+              style={{ position: 'absolute', left: m.at[0], top: m.at[1], width: m.size, display: 'grid', justifyItems: 'center', gap: 6 }}
+            >
+              <Sphere m={{ kind: 'texture', src: m.src, at: [0.5, 0.45], under: '#e9e4df', name: m.name, zoom: 1.6 }} size={m.size} />
+              <span style={{ fontSize: 12, lineHeight: '16px', color: MUTED, whiteSpace: 'nowrap' }}>{m.name}</span>
+            </motion.div>
+          ))}
+        </section>
 
-          {/* colours: one strip, each band as wide as its share of the board */}
-          <Section title="Colours" aside={<Chip on={copied} onClick={copy}>{copied ? 'Copied' : 'Copy hex'}</Chip>}>
-            <div style={{ display: 'flex', gap: 4, height: 132 }}>
-              {swatches.map((c, i) => (
-                <motion.div
-                  key={c}
-                  initial={{ flexGrow: 0, opacity: 0 }}
-                  animate={{ flexGrow: SHARE[i], opacity: 1 }}
-                  transition={{ delay: 0.3 + i * 0.07, duration: 0.8, ease }}
-                  style={{ flexBasis: 0, minWidth: 0, borderRadius: i === 0 ? '18px 6px 6px 18px' : i === swatches.length - 1 ? '6px 18px 18px 6px' : 6, background: c, padding: '10px 8px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', color: ink(c), overflow: 'hidden' }}
-                >
-                  <span style={{ fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{SHARE[i] >= 18 ? ROLE[i] : ''}</span>
-                  <span style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>{SHARE[i]}%</span>
-                </motion.div>
-              ))}
-            </div>
-            {/* each colour as a pill: name and hex */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
-              {[...swatches.map((c) => ({ c, name: cap(nameOf(c)) })), { c: GROUND, name: 'Ground' }].map(({ c, name }) => (
-                <span key={c} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px 0 6px', borderRadius: 999, background: TILE }}>
-                  <span style={{ width: 18, height: 18, borderRadius: 999, background: c, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.06)' }} />
-                  <span style={{ fontSize: 13 }}>{name}</span>
-                  <span style={{ fontSize: 11, color: MUTED }}>{c.toUpperCase()}</span>
-                </span>
-              ))}
-            </div>
-          </Section>
+        {/* ---------- 03 texture: close-ups torn out and layered ---------- */}
+        <section style={{ position: 'relative', height: 580, padding: '56px 20px 0', boxSizing: 'border-box', background: 'var(--bg-default)', clipPath: torn(21, 'both') }}>
+          {kicker('03 - Texture')}
+          {heading('Up close')}
+          {CONCEPT.textures.map((tx, i) => (
+            <motion.div
+              key={tx.name}
+              initial={{ opacity: 0, y: 30, rotate: 0 }}
+              animate={{ opacity: 1, y: 0, rotate: tx.turn }}
+              transition={{ delay: 0.3 + i * 0.08, duration: 0.8, ease }}
+              // 160 wide: turned by up to 4°, every tile still sits inside the 20px margins
+              style={{ position: 'absolute', left: tx.at[0], top: tx.at[1], width: 160, height: 190, zIndex: i }}
+            >
+              <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#fcfaf7', clipPath: torn(30 + i, 'all'), boxShadow: '0 10px 30px rgba(0,0,0,.12)' }}>
+                <img src={asset(tx.src)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+              <span style={{ position: 'absolute', left: 10, [tx.label]: 12, padding: '3px 9px', borderRadius: 999, background: 'rgba(252,250,247,.9)', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>{tx.name}</span>
+            </motion.div>
+          ))}
+        </section>
 
-          {/* textures: a close-up of the real piece each one comes from */}
-          <Section title="Textures">
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${textureCols}, minmax(0, 1fr))`, columnGap: 10, rowGap: 18 }}>
-              {textures.map((c) => (
-                <div key={c.kind.key}>
-                  <div style={{ position: 'relative', aspectRatio: '4 / 5', borderRadius: 16, overflow: 'hidden', background: TILE }}>
-                    <div style={{ position: 'absolute', inset: 0, transform: 'scale(2.6)' }}>
-                      <PieceContent it={c.pieces[0]} />
-                    </div>
-                  </div>
-                  <div className="t-label" style={{ marginTop: 6 }}>{c.kind.texture}</div>
+        {/* ---------- 04 finish: where the board sits between opposites, said big ---------- */}
+        <section style={{ padding: '30px 20px 60px' }}>
+          {kicker('04 - Finish')}
+          {heading('The surface')}
+          <div style={{ display: 'grid', gap: 22, marginTop: 24 }}>
+            {AXES.map(([lo, hi], i) => (
+              <div key={lo}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, lineHeight: '20px', fontWeight: 600 }}>
+                  <span style={{ color: surface[i] < 0.5 ? '#111' : 'rgba(17,17,17,.25)' }}>{lo}</span>
+                  <span style={{ color: surface[i] >= 0.5 ? '#111' : 'rgba(17,17,17,.25)' }}>{hi}</span>
                 </div>
-              ))}
-            </div>
-          </Section>
-
-          {/* materials: what it's made of, and how its edges are finished */}
-          <Section title="Materials">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-              {kept.map((c) => (
-                <div key={c.kind.key} style={{ padding: '12px 14px', borderRadius: 18, background: TILE }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{c.kind.material}</div>
-                  <div className="t-label" style={{ color: MUTED, marginTop: 2 }}>{c.kind.finish}</div>
+                <div style={{ position: 'relative', height: 1.5, marginTop: 8, background: 'rgba(17,17,17,.15)' }}>
+                  <motion.span
+                    initial={{ left: '50%' }}
+                    animate={{ left: `${surface[i] * 100}%` }}
+                    transition={{ delay: 0.4, duration: 0.9, ease }}
+                    style={{ position: 'absolute', top: -5, width: 11, height: 11, marginLeft: -5.5, borderRadius: 999, background: 'var(--red-700)' }}
+                  />
                 </div>
-              ))}
-            </div>
-          </Section>
-
-          {/* surface: where the board sits between opposites */}
-          <Section title="Surface">
-            <div style={{ display: 'grid', gap: 16, padding: '16px 16px 18px', borderRadius: 'var(--radius-card)', background: TILE }}>
-              {AXES.map(([lo, hi], i) => (
-                <div key={lo}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
-                    <span style={{ color: surface[i] < 0.5 ? '#111' : MUTED }}>{lo}</span>
-                    <span style={{ color: surface[i] >= 0.5 ? '#111' : MUTED }}>{hi}</span>
-                  </div>
-                  <div style={{ position: 'relative', height: 6, borderRadius: 999, background: 'var(--bg-canvas)' }}>
-                    <motion.span
-                      initial={false}
-                      animate={{ left: `${surface[i] * 100}%` }}
-                      transition={{ duration: 0.6, ease }}
-                      style={{ position: 'absolute', top: -4, width: 14, height: 14, marginLeft: -7, borderRadius: 999, background: 'var(--bg-inverse)', boxShadow: '0 0 0 3px var(--bg-default)' }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Section>
-
-          {/* the clear ask: which kinds of pin to go after */}
-          <Section title="Pins to look for" aside={<span className="t-label" style={{ color: MUTED }}>Tap to keep or drop</span>}>
-            <div style={{ display: 'grid', gap: 8 }}>
-            {counts.map((c, i) => {
-              const off = dropped.includes(c.kind.key)
-              return (
-                <motion.button
-                  key={c.kind.key}
-                  whileTap={{ scale: 0.985 }}
-                  onClick={() => setDropped((d) => (off ? d.filter((k) => k !== c.kind.key) : [...d, c.kind.key]))}
-                  animate={{ opacity: off ? 0.38 : 1 }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', boxSizing: 'border-box', padding: 8, paddingRight: 14, borderRadius: 20, textAlign: 'left', background: off ? 'transparent' : TILE, boxShadow: off ? 'inset 0 0 0 1.5px var(--bg-default)' : 'none' }}
-                >
-                  <div style={{ position: 'relative', width: 52, height: 52, flex: 'none', borderRadius: 14, background: 'var(--bg-canvas)' }}>
-                    {c.pieces.slice(0, 2).map((p, k) => (
-                      <div key={p.id} style={{ position: 'absolute', inset: k ? '14px 2px 2px 14px' : '4px 12px 12px 4px', transform: `rotate(${k ? 8 : -6}deg)` }}>
-                        <PieceContent it={p} />
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                      <span style={{ fontSize: 15, fontWeight: 600, textDecoration: off ? 'line-through' : 'none' }}>{c.kind.name}</span>
-                      {i === 0 && !off && <span style={{ padding: '1px 7px', borderRadius: 999, background: 'var(--red-100)', color: 'var(--red-700)', fontSize: 11, fontWeight: 600 }}>Lead</span>}
-                    </div>
-                    <div style={{ fontSize: 12, lineHeight: '17px', color: MUTED, marginTop: 2 }}>{c.kind.look}</div>
-                  </div>
-                  <span
-                    style={{
-                      width: 22, height: 22, borderRadius: 999, flex: 'none', display: 'grid', placeItems: 'center',
-                      background: off ? 'transparent' : 'var(--red-700)', boxShadow: off ? 'inset 0 0 0 1.5px rgba(17,17,17,.2)' : 'none', color: '#fff',
-                    }}
-                  >
-                    {!off && (
-                      <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l2.6 2.6L9 1" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    )}
-                  </span>
-                </motion.button>
-              )
-            })}
-            </div>
-            <AnimatePresence>
-              {dropped.length > 0 && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden' }}>
-                  <div className="t-label" style={{ color: MUTED, paddingTop: 10 }}>
-                    Less of {counts.filter((c) => dropped.includes(c.kind.key)).map((c) => c.kind.name.toLowerCase()).join(', ')}.
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </Section>
-
-          {/* no save button: it keeps itself */}
-          <div className="t-label" style={{ marginTop: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: MUTED }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: '#7bbf3a' }} />
-            Saved automatically to Studio
+              </div>
+            ))}
           </div>
-        </div>
-      </motion.article>
+        </section>
+
+        {/* ---------- 05 statement: the concept in the user's own words ---------- */}
+        <section style={{ padding: '10px 20px 0' }}>
+          {kicker('05 - Statement')}
+          {heading('In your words')}
+          <textarea
+            aria-label="Concept or artist statement"
+            value={statement}
+            onChange={(e) => setStatement(e.target.value)}
+            placeholder="Write your concept or artist statement: what this is about, and what you want people to feel."
+            rows={6}
+            style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 18, padding: 16, border: 0, outline: 'none', resize: 'vertical', borderRadius: 20, background: 'var(--bg-default)', font: 'inherit', fontSize: 16, lineHeight: '24px', color: '#111' }}
+          />
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 6, textAlign: 'right' }}>{statement.trim() ? `${statement.trim().split(/\s+/).length} words` : 'Saved as you type'}</div>
+        </section>
+
+        {/* ---------- 06 checklist: what it has to have ---------- */}
+        <section style={{ padding: '40px 20px 0' }}>
+          {kicker('06 - Checklist')}
+          {heading('Make sure it has')}
+          <div style={{ display: 'grid', marginTop: 16 }}>
+            {checklist.map((c, i) => (
+              <motion.div key={c.text + i} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid rgba(17,17,17,.12)' }}>
+                <motion.button
+                  aria-label={c.done ? `Untick ${c.text}` : `Tick ${c.text}`}
+                  aria-pressed={c.done}
+                  whileTap={{ scale: 0.85 }}
+                  onClick={() => setChecklist((l) => l.map((x, k) => (k === i ? { ...x, done: !x.done } : x)))}
+                  style={{ width: 24, height: 24, borderRadius: 999, flex: 'none', display: 'grid', placeItems: 'center', background: c.done ? 'var(--bg-inverse)' : 'transparent', boxShadow: c.done ? 'none' : 'inset 0 0 0 1.5px rgba(17,17,17,.3)', transition: 'background .2s' }}
+                >
+                  {c.done && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l2.6 2.6L9 1" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                </motion.button>
+                <span style={{ flex: 1, fontSize: 16, lineHeight: '22px', color: c.done ? MUTED : '#111', textDecoration: c.done ? 'line-through' : 'none' }}>{c.text}</span>
+                <button aria-label={`Remove ${c.text}`} onClick={() => setChecklist((l) => l.filter((_, k) => k !== i))} style={{ width: 28, height: 28, display: 'grid', placeItems: 'center', color: MUTED, flex: 'none' }}>
+                  <CloseIcon size={14} />
+                </button>
+              </motion.div>
+            ))}
+            {/* add your own */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid rgba(17,17,17,.12)' }}>
+              <span style={{ width: 24, height: 24, borderRadius: 999, flex: 'none', display: 'grid', placeItems: 'center', border: '1.5px dashed rgba(17,17,17,.3)', boxSizing: 'border-box', color: MUTED }}>
+                <PlusIcon size={12} />
+              </span>
+              <input
+                aria-label="Add to the checklist"
+                value={newItem}
+                onChange={(e) => setNewItem(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addItem()}
+                placeholder="Add something it needs…"
+                style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', background: 'none', font: 'inherit', fontSize: 16, color: '#111' }}
+              />
+              {newItem.trim() && <Pill label="Add" onClick={addItem} />}
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>{checklist.filter((c) => c.done).length} of {checklist.length} done</div>
+        </section>
+
+        {/* ---------- finish: take it with you ---------- */}
+        <section style={{ padding: '40px 20px 140px', display: 'grid', gap: 10 }}>
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => {
+              setExporting(true)
+              downloadConceptPdf({
+                title: title.trim() || CONCEPT.title, about: CONCEPT.about, wash: CONCEPT.wash,
+                palette: swatches.map((c, i) => ({ colour: c, name: cap(nameOf(c)), share: SHARE[i] })),
+                materials: CONCEPT.materials.map((m) => ({ name: m.name, src: m.src })),
+                textures: CONCEPT.textures.map((t) => ({ name: t.name, src: t.src })),
+                surface: AXES.map(([lo, hi], i) => ({ lo, hi, at: surface[i] })),
+                statement, checklist,
+              }).finally(() => setExporting(false))
+            }}
+            style={{ height: 52, borderRadius: 999, background: 'var(--bg-default)', color: '#111', fontSize: 16, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <DownloadIcon size={18} /> {exporting ? 'Making the PDF…' : 'Download PDF'}
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setSharing(true)}
+            style={{ height: 52, borderRadius: 999, background: 'var(--bg-inverse)', color: 'var(--bg-canvas)', fontSize: 16, fontWeight: 500 }}
+          >
+            Share
+          </motion.button>
+          {kept2 && <div style={{ fontSize: 12, color: MUTED, textAlign: 'center' }}>Saved to your Studio</div>}
+        </section>
+      </div>
+    </div>
+    <ShareSheet
+      open={sharing}
+      onClose={() => setSharing(false)}
+      hostId="concept-overlay"
+      cover={asset(CONCEPT.wash)}
+      title={title || 'Concept'}
+      subtitle="Concept card · Ads"
+      link="pin.it/studio/ads/concept"
+      note="Anyone with the link can view this concept."
+      action="Share concept"
+      onSave={() => setKept2(true)}
+    />
     </motion.div>
   )
+}
+
+/** A torn-paper edge as a clip-path: rough along the chosen sides, the same every time for a seed. */
+function torn(seed: number, edges: 'top' | 'sides' | 'both' | 'all') {
+  let x = seed * 9301 + 49297
+  const rand = () => ((x = (x * 9301 + 49297) % 233280) / 233280)
+  const rough = (n: number, amp: number) => Array.from({ length: n + 1 }, (_, i) => [(i / n) * 100, rand() * amp])
+  const pts: string[] = []
+  const T = edges === 'sides' ? 0 : edges === 'all' ? 3 : 2.2 // depth of the tear, in %
+  const S = edges === 'sides' || edges === 'all' ? 4 : 0
+  const B = edges === 'both' || edges === 'all' ? T : 0
+  // top, left to right
+  rough(24, edges === 'sides' ? 0 : T).forEach(([px, d]) => pts.push(`${px}% ${d}%`))
+  // right side, top to bottom
+  rough(14, S).forEach(([py, d]) => pts.push(`${100 - d}% ${py}%`))
+  // bottom, right to left
+  rough(24, B).reverse().forEach(([px, d]) => pts.push(`${px}% ${100 - d}%`))
+  // left side, bottom to top
+  rough(14, S).reverse().forEach(([py, d]) => pts.push(`${d}% ${py}%`))
+  return `polygon(${pts.join(', ')})`
 }

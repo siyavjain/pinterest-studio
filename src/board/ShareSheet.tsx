@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Sheet from './Sheet'
-import { ActionButton, Pill } from '../components/Button'
+import { ActionButton, Pill, SHARE_GLYPH } from '../components/Button'
 import Face from '../components/Face'
 import { DownloadIcon, LinkIcon, MailIcon, MessageIcon, PlusIcon, QrIcon } from '../components/Icons'
 
@@ -27,13 +27,13 @@ const Circle = ({ children, dashed }: { children?: React.ReactNode; dashed?: boo
   </motion.div>
 )
 
-function Row({ title, items }: { title: string; items: { label: string; node: React.ReactNode }[] }) {
+function Row({ title, items }: { title: string; items: { label: string; node: React.ReactNode; onClick?: () => void }[] }) {
   return (
     <div style={{ padding: '0 12px' }}>
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{title}</div>
       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
         {items.map((it) => (
-          <button key={it.label} style={{ display: 'grid', justifyItems: 'center', gap: 6 }}>
+          <button key={it.label} onClick={it.onClick} style={{ display: 'grid', justifyItems: 'center', gap: 6 }}>
             {it.node}
             <span className="t-label" style={{ color: 'var(--text-secondary)' }}>{it.label}</span>
           </button>
@@ -43,36 +43,51 @@ function Row({ title, items }: { title: string; items: { label: string; node: Re
   )
 }
 
-export default function ShareSheet({ open, onClose, cover }: { open: boolean; onClose: () => void; cover: string }) {
+export default function ShareSheet({
+  open, onClose, cover, title = 'Ads', subtitle = '14 pins · 3 collaborators', link = 'pin.it/studio/ads',
+  note = 'Anyone with the link can view. Collaborators can add pins.', action = 'Share board', onSave, hostId,
+}: {
+  open: boolean
+  onClose: () => void
+  cover: string
+  title?: string
+  subtitle?: string
+  link?: string
+  note?: string
+  action?: string
+  onSave?: () => void // the Save tile keeps a copy; once tapped it reads "Saved"
+  hostId?: string
+}) {
   const [copied, setCopied] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   return (
-    <Sheet open={open} onClose={onClose}>
+    <Sheet open={open} onClose={onClose} hostId={hostId}>
       <div style={{ padding: '12px 8px 0', display: 'grid', gap: 22 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '0 12px' }}>
           <img src={cover} alt="" style={{ width: 56, height: 56, borderRadius: 16, objectFit: 'cover', background: 'var(--bg-default)' }} />
           <div>
-            <div style={{ fontSize: 20, fontWeight: 600 }}>Ads</div>
-            <div className="t-body">14 pins · 3 collaborators</div>
+            <div style={{ fontSize: 20, fontWeight: 600 }}>{title}</div>
+            <div className="t-body">{subtitle}</div>
           </div>
         </div>
 
         <div style={{ display: 'grid', gap: 8 }}>
           <div style={{ height: 56, borderRadius: 999, background: 'var(--input-bg)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 18px' }}>
             <LinkIcon color="var(--text-secondary)" />
-            <span className="t-body" style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>pin.it/studio/ads</span>
+            <span className="t-body" style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{link}</span>
             <Pill
               label={copied ? 'Link copied' : 'Copy link'}
               selected={copied}
               onClick={() => {
-                navigator.clipboard?.writeText('https://pin.it/studio/ads').catch(() => {})
+                navigator.clipboard?.writeText(`https://${link}`).catch(() => {})
                 setCopied(true)
                 setTimeout(() => setCopied(false), 1600)
               }}
             />
           </div>
           <div className="t-label" style={{ color: 'var(--text-secondary)', padding: '0 12px' }}>
-            Anyone with the link can view. Collaborators can add pins.
+            {note}
           </div>
         </div>
 
@@ -83,9 +98,16 @@ export default function ShareSheet({ open, onClose, cover }: { open: boolean; on
             { label: 'Invite', node: <Circle dashed><PlusIcon /></Circle> },
           ]}
         />
-        <Row title="Share via" items={VIA.map(({ label, Icon }) => ({ label, node: <Circle><Icon /></Circle> }))} />
+        <Row
+          title="Share via"
+          items={VIA.map(({ label, Icon }) =>
+            label === 'Save' && onSave
+              ? { label: saved ? 'Saved' : 'Save', node: <Circle><Icon /></Circle>, onClick: () => { onSave(); setSaved(true) } }
+              : { label, node: <Circle><Icon /></Circle> },
+          )}
+        />
 
-        <ActionButton label="Share board" onClick={onClose} />
+        <ActionButton label={action} icon={SHARE_GLYPH} onClick={onClose} />
       </div>
     </Sheet>
   )

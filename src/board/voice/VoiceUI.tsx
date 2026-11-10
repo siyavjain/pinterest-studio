@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { DotsIcon, MicIcon, TrashIcon } from '../../components/Icons'
 import { Pill } from '../../components/Button'
 import { asset } from '../../components/asset'
-import Squiggle from '../Squiggle'
+import { VoiceWave } from '../Squiggle'
 import type { Suggestion } from './intent'
 
 const ease = [0.22, 1, 0.36, 1] as const
@@ -19,10 +19,11 @@ type MicProps = {
   onHoldStart: () => void
   onHoldEnd: (how: 'send' | 'cancel' | 'tap') => void
   onArm: (armed: boolean) => void
+  dark?: boolean // the phone board's look: a dark circle with a cream mic, like Figma's toolbar
 }
 
 /** Press and hold to talk. Slide away before letting go to cancel. */
-export function Mic({ size = 56, holding, onHoldStart, onHoldEnd, onArm }: MicProps) {
+export function Mic({ size = 56, holding, onHoldStart, onHoldEnd, onArm, dark }: MicProps) {
   const start = useRef<{ x: number; y: number; t: number } | null>(null)
   const armed = useRef(false)
 
@@ -59,22 +60,34 @@ export function Mic({ size = 56, holding, onHoldStart, onHoldEnd, onArm }: MicPr
         start.current = null
         onHoldEnd('cancel')
       }}
-      animate={{ scale: holding ? 1.18 : 1 }}
+      // the dark mic sits 8px from the screen edge: its swell and halo stay even all round and inside that margin
+      animate={{ scale: holding ? (dark ? 1.05 : 1.18) : 1 }}
       transition={{ type: 'spring', stiffness: 400, damping: 22 }}
       style={{
         position: 'relative', width: size, height: size, borderRadius: 999, flexShrink: 0,
-        background: 'var(--red-700)', color: 'var(--bg-canvas)', display: 'grid', placeItems: 'center',
-        boxShadow: '0 8px 20px rgba(173,0,26,.3)', touchAction: 'none',
+        background: dark ? 'var(--bg-inverse)' : 'var(--red-700)', color: 'var(--bg-canvas)', display: 'grid', placeItems: 'center',
+        boxShadow: dark ? 'none' : '0 8px 20px rgba(173,0,26,.3)', touchAction: 'none',
       }}
     >
       {holding && (
         <motion.span
-          style={{ position: 'absolute', inset: -8, borderRadius: 999, background: 'var(--red-700)', opacity: 0.18 }}
-          animate={{ scale: [1, 1.2, 1] }}
+          style={{
+            position: 'absolute', borderRadius: 999, background: dark ? 'var(--bg-inverse)' : 'var(--red-700)', opacity: 0.18,
+            inset: dark ? -3 : -8,
+          }}
+          animate={{ scale: [1, dark ? 1.12 : 1.2, 1] }}
           transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
-      <MicIcon size={size > 48 ? 24 : size > 32 ? 20 : 14} />
+      {dark ? (
+        // Figma's toolbar mic, outlined
+        <svg width="14.6" height="19.6" viewBox="12.7 10.2 14.6 19.6" fill="none" style={{ position: 'relative' }}>
+          <path d="M23 14C23 12.3431 21.6569 11 20 11C18.3431 11 17 12.3431 17 14V19C17 20.6569 18.3431 22 20 22C21.6569 22 23 20.6569 23 19V14Z" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M26.5 19C26.5 20.7239 25.8152 22.3772 24.5962 23.5962C23.3772 24.8152 21.7239 25.5 20 25.5C18.2761 25.5 16.6228 24.8152 15.4038 23.5962C14.1848 22.3772 13.5 20.7239 13.5 19M20 25.5V29" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <MicIcon size={size > 48 ? 24 : size > 32 ? 20 : 14} />
+      )}
     </motion.button>
   )
 }
@@ -108,7 +121,7 @@ export function HoldTip({ show, children, align = 'right' }: { show: boolean; ch
  * Bottom-right, always in the same place. Nothing selected: just the mic.
  * Something selected: the mic opens into a bar with suggestions and delete.
  */
-export function Dock({ open, suggestions, onSuggest, onDelete, mic, tip, tipText, active }: {
+export function Dock({ open, suggestions, onSuggest, onDelete, mic, tip, tipText, active, right = 0, bottom }: {
   open: boolean
   suggestions: Suggestion[]
   onSuggest: (s: Suggestion) => void
@@ -117,6 +130,8 @@ export function Dock({ open, suggestions, onSuggest, onDelete, mic, tip, tipText
   tip: boolean
   tipText?: string
   active?: string // label of the suggestion currently in use
+  right?: number // extra room on the right, for the phone's toolbar
+  bottom?: number // px from the screen's foot, to line up with something beside it
 }) {
   const chips = useRef<HTMLDivElement>(null)
   const [fade, setFade] = useState({ left: false, right: false })
@@ -133,7 +148,7 @@ export function Dock({ open, suggestions, onSuggest, onDelete, mic, tip, tipText
   return (
     <div
       onPointerDown={(e) => e.stopPropagation()}
-      style={{ position: 'absolute', left: 'var(--ui-x)', right: 'var(--ui-x)', bottom: 'var(--ui-dock)', zIndex: 47, display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none' }}
+      style={{ position: 'absolute', left: 'var(--ui-x)', right: `calc(var(--ui-x) + ${right}px)`, bottom: bottom ?? 'var(--ui-dock)', zIndex: 47, display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none' }}
     >
       <motion.div
         layout
@@ -237,7 +252,7 @@ export function ListeningPanel({ transcript, heard, armed, thumbs, title = 'List
         {heard ? transcript : 'Say what to do…'}
       </div>
       <div style={{ margin: '4px -20px 0', opacity: armed ? 0.3 : 1, transition: 'opacity .2s' }}>
-        <Squiggle height={40} width={386} />
+        <VoiceWave height={64} width={386} />
       </div>
       <div className="t-label" style={{ textAlign: 'center', color: armed ? 'var(--red-700)' : 'var(--text-secondary)', marginTop: 2 }}>
         {armed ? 'Let go to cancel' : 'Let go to send · slide away to cancel'}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { IconButton, Pill } from '../components/Button'
 import { BackIcon, ShareIcon, TrashIcon } from '../components/Icons'
-import { Answer, Clarify, Confirm, Dock, Done, ListeningPanel, Mic, Thinking } from '../board/voice/VoiceUI'
+import { Answer, Clarify, Confirm, Dock, Done, HoldTip, ListeningPanel, Mic, Thinking } from '../board/voice/VoiceUI'
 import { COLOUR_GROUPS, PIECES, labelOf, parse, suggestionsFor } from '../board/voice/intent'
 import type { Intent, Suggestion } from '../board/voice/intent'
 import { useSpeech } from '../board/voice/useSpeech'
@@ -14,6 +14,12 @@ import DirectionCard from '../board/DirectionCard'
 import { loadDirection, saveDirection } from '../board/directions'
 import VoiceNote from '../board/VoiceNote'
 import PieceContent from '../board/Piece'
+import CreateNode, { NODE_W, PORT_Y } from '../board/CreateNode'
+import MaterialWheel, { SIZE as WHEEL_SIZE, WHEEL_H } from '../board/MaterialWheel'
+import type { Material } from '../board/Sphere'
+import { pieceFor } from '../board/cutouts'
+import { extractColours } from '../board/colours'
+import type { CreateNodeData } from '../board/CreateNode'
 import Face from '../components/Face'
 import TextNote from '../board/TextNote'
 import { useVisibleBoxes, visibleRect } from '../board/visible'
@@ -24,11 +30,11 @@ import type { Part } from '../board/Piece'
 import type { Reply } from '../board/VoiceNote'
 import { pinPattern } from '../components/pin'
 import { ORIGIN, WORLD, useCanvas } from '../board/useCanvas'
+import type { Draw } from '../board/useCanvas'
 import { asset } from '../components/asset'
 import { getFit } from '../components/fit'
 import { useWeb } from '../components/view'
-import { FINDS, INGREDIENTS, POST_ASPECT, cutAspect, findByPhoto } from '../board/ingredients'
-import type { Find, Shape } from '../board/ingredients'
+import type { Shape } from '../board/ingredients'
 
 type Item = {
   id: string; src: string; x: number; y: number; w: number; h: number; z: number
@@ -36,6 +42,7 @@ type Item = {
   label?: string // ingredients pulled from a post name themselves
   crop?: { box: [number, number, number, number]; shape: Shape } // part of src, cut to a shape
   colour?: string // a colour chip
+  material?: Material // a colour-and-material sphere from the wheel
   from?: { x: number; y: number } // where it flies out from when it appears
   extracting?: boolean // a post being broken into ingredients
 }
@@ -76,42 +83,42 @@ const TEAM_LINES = [
 type Stroke = { id: string; points: [number, number][]; ink: string; width: number; kind: 'pen' | 'pencil' | 'highlighter' }
 type Snapshot = { items: Item[]; groups: Group[]; notes: Note[]; strokes: Stroke[] }
 
-// Cut-outs exactly where they sit on the "Studio ads workspace" frame (full, uncropped)
+// Cut-outs exactly where they sit on the "Studio ads workspace" frame, in its layer order
 const START: Item[] = [
-  { id: 'meadow', src: 'board-meadow', x: 15, y: 31, w: 154, h: 134 },
-  { id: 'ribbon', src: 'board-ribbon', x: 156, y: 119, w: 236, h: 236 },
-  { id: 'scary', src: 'board-scary', x: 237, y: 345, w: 254, h: 254 },
-  { id: 'hand', src: 'board-hand', x: 11, y: 223, w: 162, h: 216 },
-  { id: 'cap', src: 'board-cap', x: 201, y: 511, w: 124, h: 155 },
-  { id: 'flower', src: 'board-flower', x: 45, y: 480, w: 134, h: 134 },
-  { id: 'blob', src: 'board-blob', x: -19, y: 638, w: 72, h: 129 },
-  { id: 'gradient', src: 'board-gradient', x: 329, y: 19, w: 106, h: 204 },
-  { id: 'bloom', src: 'board-bloom', x: 217, y: -24, w: 118, h: 135 },
-  { id: 'hill', src: 'board-hill', x: 329, y: 666, w: 188, h: 97 },
-  { id: 'bouquet', src: 'ws-14', x: 57, y: 688, w: 159, h: 186 },
-  // the colours pulled from the original pins, like any extraction: a row under all the pieces
-  ...['#7b5cff', '#c8f02e', '#f4a6c4', '#ff7a3d', '#3e5c2a'].map((colour, i) => ({
-    id: `start-c${i}`, src: 'board-palette', label: 'colour', colour, x: 90 + i * 46, y: 896, w: 38, h: 38,
+  { id: 'water', src: 'image 45', x: -71, y: 772, w: 116.12, h: 154.75 },
+  { id: 'leaf-person', src: 'image 34', x: -80, y: 161, w: 124.71, h: 166.19 },
+  { id: 'sky-leaves', src: 'image 35', x: 154, y: 64, w: 124.74, h: 165.61 },
+  { id: 'hanging-leaves', src: 'image 36', x: 194, y: 276, w: 123.67, h: 98.93 },
+  { id: 'veil', src: 'image 37', x: 53, y: 308, w: 132, h: 175 },
+  { id: 'palm', src: 'image 38', x: 309, y: -23, w: 120.31, h: 163.99 },
+  { id: 'window', src: 'image 39', x: 336.44, y: 308.45, w: 107.54, h: 161.31 },
+  { id: 'portrait', src: 'image 40', x: 3, y: -32, w: 130, h: 150, crop: { box: [0, 0.0673, 1, 0.8654] as [number, number, number, number], shape: 'cut' as const } }, // filled and trimmed top and bottom, as in Figma
+  { id: 'big-leaf', src: 'image 41', x: 277, y: 453, w: 63, h: 112 },
+  { id: 'dry-leaf', src: 'image 42', x: -18, y: 517, w: 124.72, h: 156.1 },
+  { id: 'light-face', src: 'image 44', x: 156, y: 567, w: 136, h: 170 },
+  // the colours pulled from the pins, like any extraction: a row under all the pieces
+  ...['#5f7f3a', '#a9c79a', '#6fa3c9', '#e9e2d3', '#2f4a2a'].map((colour, i) => ({
+    id: `start-c${i}`, src: 'board-palette', label: 'colour', colour, x: 90 + i * 46, y: 960, w: 38, h: 38,
   })),
 ].map((it, i) => ({ ...it, z: i + 1 }))
 
 // The same board on a wide screen: pieces 1.4× larger, scattered across a ~1360×780 area
 // so the window looks full. [x, y, w, h]
 const WEB_AT: Record<string, [number, number, number, number]> = {
-  meadow: [40, 20, 216, 188],
-  bloom: [300, 0, 165, 189],
-  ribbon: [480, 40, 330, 330],
-  gradient: [880, 10, 148, 286],
-  hand: [1080, 30, 227, 302],
-  flower: [60, 260, 188, 188],
-  scary: [330, 360, 356, 356],
-  cap: [760, 380, 174, 217],
-  blob: [980, 380, 101, 181],
-  bouquet: [1130, 380, 223, 260],
-  hill: [40, 520, 263, 136],
+  portrait: [40, 10, 182, 210],
+  'sky-leaves': [280, 30, 175, 232],
+  palm: [520, 0, 168, 230],
+  'leaf-person': [760, 20, 175, 233],
+  window: [1010, 10, 151, 226],
+  veil: [1200, 40, 185, 245],
+  'dry-leaf': [40, 300, 175, 219],
+  'hanging-leaves': [280, 340, 173, 139],
+  'light-face': [520, 300, 190, 238],
+  'big-leaf': [790, 320, 88, 157],
+  water: [960, 310, 163, 217],
 }
 const WEB_START: Item[] = START.map((it, i) => {
-  if (it.colour) return { ...it, x: 40 + (i - 11) * 52, y: 690, w: 44, h: 44 } // the palette row, under the hill, clear of the toolbar
+  if (it.colour) return { ...it, x: 40 + (i - 11) * 52, y: 600, w: 44, h: 44 } // the palette row, under the pieces, clear of the toolbar
   const [x, y, w, h] = WEB_AT[it.id]
   return { ...it, x, y, w, h }
 })
@@ -130,10 +137,9 @@ const LONG_PRESS_MS = 450
 // An outline that follows a cut-out's transparent edges: the same shape shadowed
 // a few px in four directions, in white. Width 0 = no outline.
 const outline = (w: number) => {
-  // a white sticker edge and a soft lift, rather than a coloured line
-  const c = `rgba(255, 255, 255, ${w ? 1 : 0})`
-  const lift = `drop-shadow(0 ${w * 2}px ${w * 4}px rgba(0, 0, 0, ${w ? 0.18 : 0}))`
-  return `drop-shadow(${w}px 0 0 ${c}) drop-shadow(-${w}px 0 0 ${c}) drop-shadow(0 ${w}px 0 ${c}) drop-shadow(0 -${w}px 0 ${c}) ${lift}`
+  // a thin line in text-brand red that follows the piece's own edge
+  const c = `rgba(173, 0, 26, ${w ? 1 : 0})`
+  return `drop-shadow(${w}px 0 0 ${c}) drop-shadow(-${w}px 0 0 ${c}) drop-shadow(0 ${w}px 0 ${c}) drop-shadow(0 -${w}px 0 ${c})`
 }
 
 // where a comment sits beside the piece it's on: off its right side (or left, for a second
@@ -185,7 +191,23 @@ function mergeLayout(pieces: Item[], variant: number): Part[] {
   return parts.map((p) => ({ ...p, x: p.x - (l + r) / 2, y: p.y - (t + b) / 2 }))
 }
 
-// the board's project in the Studio library, where its direction card is kept
+// Images the prototype "generates": the right pieces wired into a node, asked for in the right
+// words, make a finished picture instead of a collage of the pieces.
+const RECIPES = [
+  { needs: ['image 44', 'image 45'], words: /frozen|ice|underwater|flower/i, src: 'image 50', aspect: 1133 / 2022 }, // two underwater faces → a girl with flowers frozen in ice
+]
+
+/** Is the point inside the loop? (even–odd: count crossings of a ray to the right) */
+function inside([x, y]: [number, number], poly: [number, number][]) {
+  let yes = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) yes = !yes
+  }
+  return yes
+}
+
+// the board's project in the Studio library, where its concept card is kept
 const PROJECT = 'Ads'
 
 export default function Board({ onBack, openDirection = false, fresh = false }: { onBack: () => void; openDirection?: boolean; fresh?: boolean /* just created: nobody has left a note yet */ }) {
@@ -212,12 +234,17 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
   const drawing = useRef<string | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [shareOpen, setShareOpen] = useState(false)
+  const [cmf, setCmf] = useState<string | null>(null) // the piece whose colour & material wheel is open
   const [explore, setExplore] = useState<null | { subject: string; tab: 'similar' | 'ingredients' }>(null)
   const lastExplore = useRef({ subject: 'this board', tab: 'similar' as 'similar' | 'ingredients' })
   if (explore) lastExplore.current = explore // keep content while the sheet slides away
   const [rec, setRec] = useState(false)
   // a merge being tried out on the board, centred on `at`, before it's kept
   const [merging, setMerging] = useState<null | { ids: string[]; pieces: Item[]; at: { x: number; y: number }; variant: number }>(null)
+  // Flora-style create nodes: pieces are wired in and the node makes one image from them
+  const [nodes, setNodes] = useState<CreateNodeData[]>([])
+  const [nodeH, setNodeH] = useState<Record<string, number>>({})
+  const [wiring, setWiring] = useState<null | { from: string; x: number; y: number; to?: string }>(null) // a wire being dragged out of a piece; to: the piece it's over
   const [direction, setDirection] = useState(openDirection) // the board summed up into a direction card
   const [savedDirection, setSavedDirection] = useState(() => loadDirection(PROJECT))
   const [dragging, setDragging] = useState<string | null>(null)
@@ -225,10 +252,44 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
   const [palette, setPalette] = useState<string | null>(null) // key of the frame showing colour swatches
   const didDrag = useRef(false) // a drag shouldn't also count as a tap-to-select
   const viewport = useRef<HTMLDivElement>(null)
+  const lassoDraw = useRef<Draw | null>(null) // the phone: one finger on empty board draws a lasso
   const canvas = useCanvas(viewport, () => {
     setSelected([])
     setPalette(null)
-  })
+  }, lassoDraw)
+  // the lasso being drawn, in board coordinates
+  const [lasso, setLasso] = useState<[number, number][] | null>(null)
+  const lassoPts = useRef<[number, number][]>([])
+  const toWorld = (p: { x: number; y: number }): [number, number] => [
+    (p.x - canvas.x.get()) / canvas.scale.get() - ORIGIN,
+    (p.y - canvas.y.get()) / canvas.scale.get() - ORIGIN,
+  ]
+  lassoDraw.current = web ? null : {
+    start: (p) => {
+      lassoPts.current = [toWorld(p)]
+      setLasso(lassoPts.current)
+      setSelected([])
+    },
+    move: (p) => {
+      const q = toWorld(p)
+      const last = lassoPts.current[lassoPts.current.length - 1]
+      if (Math.hypot(q[0] - last[0], q[1] - last[1]) < 3) return
+      lassoPts.current = [...lassoPts.current, q]
+      setLasso(lassoPts.current)
+    },
+    // whatever the loop goes round is selected, ready to merge, group or delete
+    end: () => {
+      const poly = lassoPts.current
+      setLasso(null)
+      if (poly.length < 3) return
+      const hit = items.filter((it) => {
+        const f = visibleRect(it)
+        return inside([f.x + f.w / 2, f.y + f.h / 2], poly)
+      })
+      setSelected(hit.map((i) => i.id))
+    },
+    cancel: () => setLasso(null),
+  }
   const history = useRef<Snapshot[]>([])
   const zoom = () => canvas.scale.get() * getFit() // window px per board px
   const zTop = useRef(START.length + 1)
@@ -397,16 +458,118 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
     setSelected([])
   }
 
-  // the pieces fly together where they are; nothing covers the board
-  const doMerge = (ids: string[]) => {
-    const pieces = ids.map(byId)
-    const at = {
-      x: pieces.reduce((n, i) => n + i.x + i.w / 2, 0) / pieces.length,
-      y: pieces.reduce((n, i) => n + i.y + i.h / 2, 0) / pieces.length,
-    }
-    setMerging({ ids, pieces, at, variant: 0 })
+  // merge makes a create node beside the pieces, already wired to them
+  const doMerge = (ids: string[], prompt = '') => {
+    const pieces = ids.map(byId).filter(Boolean)
+    if (!pieces.length) return
+    const b = bounds(pieces)
+    const at = web
+      ? { x: b.x + b.w + 120, y: b.y + b.h / 2 - PORT_Y }
+      : { x: b.x + b.w / 2 - NODE_W / 2, y: b.y + b.h + 70 }
+    const id = addNode(at, ids, prompt)
+    if (prompt) setTimeout(() => makeImage(id), 500) // asked out loud: it starts making straight away
     setSelected([])
-    canvas.panTo(at.x, at.y + 50) // room for the buttons underneath
+  }
+  const addNode = (at: { x: number; y: number }, inputs: string[], prompt = '') => {
+    const id = `node-${Date.now()}`
+    setNodes((n) => [...n, { id, ...at, inputs, prompt, status: 'idle', variant: 0 }])
+    canvas.panTo(at.x + NODE_W / 2, at.y + 200)
+    return id
+  }
+  const editNode = (id: string, f: (n: CreateNodeData) => CreateNodeData) => setNodes((list) => list.map((n) => (n.id === id ? f(n) : n)))
+  const wireIn = (nodeId: string, itemId: string) => editNode(nodeId, (n) => (n.inputs.includes(itemId) ? n : { ...n, inputs: [...n.inputs, itemId] }))
+  const makeImage = (id: string, again = false) => {
+    editNode(id, (n) => ({ ...n, status: 'making' }))
+    setTimeout(() => editNode(id, (n) => ({ ...n, status: 'done', variant: again || n.status === 'done' ? n.variant + 1 : n.variant })), 3200) // long enough to feel like it's making something
+  }
+  const recipeFor = (n: CreateNodeData) =>
+    RECIPES.find((rc) => rc.words.test(n.prompt) && rc.needs.every((src) => n.inputs.some((id) => items.find((i) => i.id === id)?.src === src)))
+  const nodeImage = (n: CreateNodeData) => {
+    const pics = n.inputs.map((i) => items.find((x) => x.id === i)).filter((i): i is Item => !!i && !i.colour)
+    return pics.length ? mergeLayout(pics.slice(0, 5), n.variant) : null
+  }
+  // the made image joins the board as a piece of its own, beside its node
+  const addMade = (n: CreateNodeData) => {
+    const rc = recipeFor(n)
+    if (rc) {
+      snapshot()
+      const w = 170, h = w / rc.aspect
+      setItems((list) => [...list, {
+        id: `made-${Date.now()}`, src: rc.src, label: n.prompt.trim(), z: ++zTop.current, w, h,
+        x: web ? n.x + NODE_W + 60 : n.x + (NODE_W - w) / 2, y: web ? n.y : n.y + (nodeH[n.id] ?? 420) + 40,
+        from: { x: n.x + NODE_W / 2, y: n.y + PORT_Y },
+      }])
+      setPhase({ k: 'done', text: 'Added the new image to the board', undo: true })
+      return
+    }
+    const parts = nodeImage(n)
+    if (!parts) return
+    snapshot()
+    const l = Math.min(...parts.map((p) => p.x)), t = Math.min(...parts.map((p) => p.y))
+    const w = Math.max(...parts.map((p) => p.x + p.w)) - l, h = Math.max(...parts.map((p) => p.y + p.h)) - t
+    const k = Math.min(1, 220 / Math.max(w, h))
+    const made: Item = {
+      id: `made-${Date.now()}`, src: parts[0].src, label: n.prompt.trim() || 'new image', z: ++zTop.current,
+      x: web ? n.x + NODE_W + 60 : n.x, y: web ? n.y : n.y + (nodeH[n.id] ?? 420) + 40, w: w * k, h: h * k,
+      from: { x: n.x + NODE_W / 2, y: n.y + PORT_Y },
+      parts: parts.map((p) => ({ ...p, x: (p.x - l) * k, y: (p.y - t) * k, w: p.w * k, h: p.h * k })),
+    }
+    setItems((list) => [...list, made])
+    setPhase({ k: 'done', text: 'Added the new image to the board', undo: true })
+  }
+  // a pointer on the screen, in board coordinates (the phone is drawn scaled)
+  const toBoard = (e: { clientX: number; clientY: number }) => {
+    const r = viewport.current!.getBoundingClientRect()
+    const k = canvas.scale.get()
+    return { x: ((e.clientX - r.left) / getFit() - canvas.x.get()) / k - ORIGIN, y: ((e.clientY - r.top) / getFit() - canvas.y.get()) / k - ORIGIN }
+  }
+  // drag a wire out of a piece: drop it on a node to plug in, or on empty board for a new node
+  const wire = useRef<typeof wiring>(null) // the same, readable before React re-renders on a fast drag
+  const setWire = (w: typeof wiring) => {
+    wire.current = w
+    setWiring(w)
+  }
+  const startWire = (from: string, e: React.PointerEvent) => {
+    e.stopPropagation()
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      /* a synthetic pointer */
+    }
+    setWire({ from, ...toBoard(e) })
+  }
+  // the piece under a point (topmost first), not counting the one the wire comes from
+  const pieceAt = (p: { x: number; y: number }, not: string) =>
+    [...items].sort((a, b) => b.z - a.z).find((it) => {
+      if (it.id === not) return false
+      const f = visibleRect(it)
+      return p.x >= f.x && p.x <= f.x + f.w && p.y >= f.y && p.y <= f.y + f.h
+    })?.id
+  const moveWire = (e: React.PointerEvent) => {
+    if (!wire.current) return
+    const p = toBoard(e)
+    setWire({ ...wire.current, ...p, to: pieceAt(p, wire.current.from) })
+  }
+  const endWire = (e: React.PointerEvent) => {
+    const wiring = wire.current
+    if (!wiring) return
+    const onNode = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-node]')?.getAttribute('data-node')
+    const onPiece = !onNode ? pieceAt(toBoard(e), wiring.from) : undefined
+    if (onNode) wireIn(onNode, wiring.from)
+    else if (onPiece) {
+      // dropped on another piece: merge them, into the node the first already feeds if there is one
+      const feeding = nodes.find((n) => n.inputs.includes(wiring.from))
+      if (feeding) {
+        wireIn(feeding.id, onPiece)
+        setPhase({ k: 'done', text: `Added the ${nameOf(byId(onPiece))} to the merge`, undo: false })
+      } else doMerge([wiring.from, onPiece])
+    } else {
+      const p = toBoard(e)
+      const piece = byId(wiring.from)
+      if (Math.hypot(p.x - (piece.x + piece.w), p.y - (piece.y + piece.h / 2)) > 60) addNode({ x: p.x, y: p.y - PORT_Y }, [wiring.from])
+    }
+    setWire(null)
+    setSelected([]) // the handles would sit over the node otherwise
   }
 
   const mergeName = (pieces: Item[]) => (pieces.length === 2 ? `${nameOf(pieces[0])} × ${nameOf(pieces[1])}` : `${pieces.length} pieces`)
@@ -566,20 +729,11 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
     teammateReplies(noteId)
   }
 
-  // a find's cut-out as a board piece, its longest side `size`, centred on `at`
-  const stickerOf = (f: Find, size: number, at: { x: number; y: number }): Item => {
-    const a = cutAspect(f)
-    const w = Math.round(a >= 1 ? size : size * a)
-    const h = Math.round(a >= 1 ? size / a : size)
-    return {
-      id: `${f.id}-${Date.now()}`, src: f.cut, label: f.label, crop: { box: f.box, shape: f.shape ?? 'cut' },
-      x: at.x - w / 2, y: at.y - h / 2, w, h, z: ++zTop.current, from: { x: at.x - w / 2, y: at.y - h / 2 },
-    }
-  }
-
   // nearest patch of board, w × h, with nothing on it; glides the view there if it isn't the middle
-  const freeSpot = (w: number, h: number) => {
-    const v = canvas.viewCentre()
+  const freeSpot = (w: number, h: number, lift = 0) => {
+    // lift: how far above the middle of the view to look (the phone's sheet covers the lower part)
+    const m = canvas.viewCentre()
+    const v = { x: m.x, y: m.y - lift }
     const clear = (cx: number, cy: number) =>
       items.every((i) => i.x > cx + w / 2 || i.x + i.w < cx - w / 2 || i.y > cy + h / 2 || i.y + i.h < cy - h / 2)
     const spots = [[0, 0]]
@@ -588,79 +742,85 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
         for (let dy = -ring; dy <= ring; dy++) if (Math.max(Math.abs(dx), Math.abs(dy)) === ring) spots.push([dx * (w + 20), dy * (h + 20)])
     const [ox, oy] = spots.find(([dx, dy]) => clear(v.x + dx, v.y + dy)) ?? [0, 0]
     const at = { x: v.x + ox, y: v.y + oy }
-    if (ox || oy) canvas.panTo(at.x, at.y)
+    if (ox || oy) canvas.panTo(at.x, at.y + lift)
     return at
   }
 
   // the suggestion card's picks go straight on as cut-outs, side by side
-  const addFinds = (ids: string[]) => {
+
+  // Studio's suggested pins drop in as a loose row in the nearest clear space
+  const addPicks = (picks: { src: string; aspect: number }[]) => {
     snapshot()
-    const c = freeSpot(ids.length * 130 + 40, 240)
-    const gap = 130
+    const H = 130
+    const widths = picks.map((p) => H * p.aspect)
+    // rows of four, in the nearest clear patch big enough for them all
+    const perRow = Math.min(4, picks.length)
+    const rows = Math.ceil(picks.length / perRow)
+    const c = freeSpot(perRow * (H * 0.8 + 20), rows * (H + 20))
     setItems((list) => [
       ...list,
-      ...ids.map((id, i) => ({ ...stickerOf(FINDS[id], 150, { x: c.x + (i - (ids.length - 1) / 2) * gap, y: c.y + (i % 2) * 40 - 20 }), id: `${id}-${Date.now()}-${i}` })),
+      ...picks.map((p, i) => {
+        const row = Math.floor(i / perRow), col = i % perRow
+        const rowWidths = widths.slice(row * perRow, row * perRow + perRow)
+        const rowTotal = rowWidths.reduce((a, b) => a + b, 0) + (rowWidths.length - 1) * 20
+        const x = c.x - rowTotal / 2 + rowWidths.slice(0, col).reduce((a, b) => a + b + 20, 0)
+        const y = c.y - (rows * (H + 20) - 20) / 2 + row * (H + 20)
+        return { id: `${p.src}-${Date.now()}-${i}`, src: p.src, x, y, w: widths[i], h: H, z: ++zTop.current, from: { x: c.x, y: c.y } }
+      }),
     ])
+    setPhase({ k: 'done', text: `Added ${picks.length} cut-outs`, undo: true })
   }
 
-  // a post from Explore lands, gets scanned, then breaks into its ingredients
-  const extractPost = (src: string) => {
+  // a pin from Add more lands as the photo, gets scanned, and turns into Studio's cut-out of it;
+  // a whole photo (from another board or the device) stays a photo, as a soft-cornered sticker
+  // a sphere picked off the colour & material wheel lands in a row under its piece
+  const addMaterial = (pieceId: string, m: Material) => {
+    const p = items.find((i) => i.id === pieceId)
+    if (!p) return
     snapshot()
-    setExplore(null)
-    const found = findByPhoto(src)
-    const w = 150
-    const h = Math.round(w / (found?.photoAspect ?? POST_ASPECT))
-    // the ingredients spread about 360 × 430 around the post
-    const spot = freeSpot(360, 430)
-    const c = { x: spot.x, y: spot.y + 40 }
-    const post: Item = { id: `${src}-${Date.now()}`, src, x: c.x - w / 2, y: c.y - h / 2 - 40, w, h, z: ++zTop.current, extracting: true }
-    setItems((list) => [...list, post])
-    setTimeout(() => {
-      const centre = { x: post.x + w / 2, y: post.y + h / 2 }
-      if (found) {
-        // a find has a real cut-out: the subject lifts off the post, its colours drop below
-        const sticker = stickerOf(found, 230, centre)
-        const row = sticker.y + sticker.h + 24
-        const chips: Item[] = found.colours.map((colour, i) => ({
-          id: `${post.id}-c${i}`, src, label: 'colour', colour,
-          x: centre.x - (found.colours.length * 52) / 2 + i * 52, y: row, w: 44, h: 44, z: ++zTop.current,
+    const made = items.filter((i) => i.id.startsWith(`${pieceId}-m`)).length
+    const f = visibleRect(p)
+    const S = 56
+    setItems((list) => [...list, {
+      id: `${pieceId}-m${made}-${Date.now()}`, src: p.src, label: m.name, material: m, w: S, h: S, z: ++zTop.current,
+      x: f.x + made * (S + 8), y: f.y + f.h + 16, from: { x: f.x + f.w / 2 - S / 2, y: f.y + f.h / 2 - S / 2 },
+    }])
+  }
+  // the wheel belongs to its piece: it closes once that piece isn't the one selected
+  useEffect(() => {
+    if (cmf && !(selected.length === 1 && selected[0] === cmf)) setCmf(null)
+  }, [selected, cmf])
+
+  // Adding a pin always extracts it: the photo lands and is scanned, then lifts into its cut-out
+  // (a soft sticker when Studio has none) and its main colours drop in as chips underneath.
+  // The Add more sheet stays open, so its + can turn to × (and back, to take it all off again).
+  const addSimilar = (photo: string, photoAspect: number) => {
+    const { src, aspect } = pieceFor(photo, photoAspect)
+    const whole = !photo.startsWith('image ')
+    snapshot()
+    const h = web ? 190 : 150
+    // on the phone the sheet covers the lower board, so the pin and its colours land in the strip
+    // still showing above it
+    const c = freeSpot(h * Math.max(aspect, photoAspect) + 40, h + 110, web ? 0 : 300 / canvas.scale.get())
+    const id = `${photo}-${Date.now()}`
+    const at = (a: number) => ({ x: c.x - (h * a) / 2, y: c.y - h / 2 - 30, w: h * a, h })
+    setItems((list) => [...list, { id, src: photo, ...at(photoAspect), z: ++zTop.current, extracting: true }])
+    const colours = extractColours(asset(photo), 3)
+    setTimeout(async () => {
+      const cut = { ...at(aspect), extracting: false, ...(whole && { crop: { box: [0, 0, 1, 1] as [number, number, number, number], shape: 'soft' as const } }) }
+      const found = await colours
+      setItems((list) => {
+        if (!list.some((i) => i.id === id)) return list // taken off again while it was scanning
+        const centre = { x: c.x, y: cut.y + cut.h / 2 }
+        const chips: Item[] = found.map((colour, i) => ({
+          id: `${id}-c${i}`, src, label: 'colour', colour, w: 44, h: 44, z: ++zTop.current,
+          x: c.x - (found.length * 52 - 8) / 2 + i * 52, y: cut.y + cut.h + 18,
           from: { x: centre.x - 22, y: centre.y - 22 },
         }))
-        setItems((list) => (list.some((i) => i.id === post.id) ? [...list.filter((i) => i.id !== post.id), { ...sticker, id: `${post.id}-cut` }, ...chips] : list))
-        setPhase({ k: 'done', text: `Cut out the ${found.label} and ${chips.length} colours`, undo: true })
-        return
-      }
-      const parts = INGREDIENTS[src] ?? []
-      const crops = parts.filter((p) => p.kind === 'crop')
-      const chips = parts.filter((p) => p.kind === 'colour')
-      const pieces: Item[] = crops.map((p, i) => {
-        if (p.kind !== 'crop') throw 0
-        const aspect = (p.box[2] * POST_ASPECT) / p.box[3]
-        const size = 120 + (i === 0 ? 30 : 0) // the main subject a touch bigger
-        const pw = Math.round(aspect >= 1 ? size : size * aspect)
-        const ph = Math.round(aspect >= 1 ? size / aspect : size)
-        const a = -Math.PI / 2 + (i / crops.length) * Math.PI * 2 // around the post
-        const r = 95
-        return {
-          id: `${post.id}-${i}`, src, label: p.label, crop: { box: p.box, shape: p.shape },
-          x: centre.x + Math.cos(a) * r - pw / 2, y: centre.y + Math.sin(a) * r * 1.2 - ph / 2,
-          w: pw, h: ph, z: ++zTop.current, from: { x: centre.x - pw / 2, y: centre.y - ph / 2 },
-        }
+        return [...list.map((i) => (i.id === id ? { ...i, src, ...cut } : i)), ...chips]
       })
-      // colour chips line up underneath
-      const row = centre.y + h / 2 + 70
-      chips.forEach((p, i) => {
-        if (p.kind !== 'colour') return
-        pieces.push({
-          id: `${post.id}-c${i}`, src, label: 'colour', colour: p.colour,
-          x: centre.x - (chips.length * 52) / 2 + i * 52, y: row, w: 44, h: 44, z: ++zTop.current,
-          from: { x: centre.x - 22, y: centre.y - 22 },
-        })
-      })
-      // undone mid-scan: the post is gone, so nothing to break apart
-      setItems((list) => (list.some((i) => i.id === post.id) ? [...list.filter((i) => i.id !== post.id), ...pieces] : list))
-      setPhase({ k: 'done', text: `Pulled ${crops.length} pieces and ${chips.length} colours from the post`, undo: true })
-    }, 1700)
+    }, 1600)
+    return id
   }
 
   const shared = (ids: string[]) => {
@@ -688,7 +848,7 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
         if (ids.length < 2) return setPhase({ k: 'clarify', heard })
         return think(`Merging ${names(ids.slice(0, 4))}…`, () => {
           setPhase({ k: 'idle' })
-          doMerge(ids.slice(0, 4))
+          doMerge(ids.slice(0, 4), /^(i want|i'?d like|generate|imagine|make|create)\b/i.test(heard.trim()) ? heard.trim() : '')
         })
       case 'group': {
         if (ids.length < 2) return setPhase({ k: 'clarify', heard })
@@ -721,6 +881,12 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
         })
       case 'similar':
       case 'colours':
+        // one piece: break it down into its colours and materials on the wheel
+        if (intent.kind === 'colours' && ids.length === 1)
+          return think('Reading its colours and materials…', () => {
+            setPhase({ k: 'idle' })
+            setCmf(ids[0])
+          })
         return think(intent.kind === 'similar' ? 'Finding more like it…' : 'Pulling the colours…', () => {
           setPhase({ k: 'idle' })
           setExplore({ subject: ids.length ? `the ${names(ids)}` : 'this board', tab: intent.kind === 'similar' ? 'similar' : 'ingredients' })
@@ -756,6 +922,8 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
     speech.start(
       replyTo.current ? 'Yes, and maybe a softer pink beside it'
         : noteMode ? 'Love the texture on this, keep it soft'
+        // the demo voice for the two underwater faces asks for the picture they make
+        : RECIPES[0].needs.every((src) => ids.some((id) => items.find((i) => i.id === id)?.src === src)) ? 'I want a girl with flower frozen underwater'
         : suggestionsFor(ids.length)[0].phrase,
     )
   }
@@ -910,6 +1078,20 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
           cursor: boxing ? 'default' : 'grab', touchAction: 'none', ...pinPattern(),
         }}
       >
+      {/* the lasso being drawn: a dashed red loop with a light red wash inside */}
+      {lasso && lasso.length > 1 && (
+        <svg width={WORLD} height={WORLD} style={{ position: 'absolute', left: 0, top: 0, zIndex: 960, pointerEvents: 'none', overflow: 'visible' }}>
+          <path
+            d={`M ${lasso.map(([x, y]) => `${(x + ORIGIN).toFixed(1)} ${(y + ORIGIN).toFixed(1)}`).join(' L ')} Z`}
+            fill="rgba(173, 0, 26, .06)"
+            stroke="var(--red-700)"
+            strokeWidth={2 / canvas.scale.get()}
+            strokeDasharray={`${6 / canvas.scale.get()} ${6 / canvas.scale.get()}`}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
       {/* the selection box being dragged */}
       {marquee && (
         <div
@@ -949,7 +1131,7 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
       {/* freeform items */}
       <AnimatePresence>
       {items.map((it) => {
-        const on = selected.includes(it.id)
+        const on = selected.includes(it.id) || wiring?.to === it.id // a wire hovering over it lights it up too
         return (
           <motion.div
             key={it.id}
@@ -982,8 +1164,8 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
               animate={{
                 filter:
                   on && phase.k === 'listening'
-                    ? [outline(2.5), outline(1), outline(2.5)]
-                    : outline(on ? 2.5 : 0),
+                    ? [outline(1), outline(0.4), outline(1)]
+                    : outline(on ? 1 : 0),
               }}
               transition={on && phase.k === 'listening' ? { duration: 1.2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
               style={{ width: '100%', height: '100%' }}
@@ -1009,6 +1191,54 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
           </motion.div>
         )
       })}
+      </AnimatePresence>
+
+      {/* a selected piece offers a handle on its right edge: drag a wire from it into a create node */}
+      {phase.k !== 'listening' && selected.map((id) => {
+        const it = items.find((i) => i.id === id)
+        if (!it || it.colour) return null
+        const f = visibleRect(it)
+        const k = 1 / canvas.scale.get()
+        return (
+          <div
+            key={`port-${id}`}
+            aria-label="Drag to connect to a create node"
+            title="Drag to connect"
+            onPointerDown={(e) => startWire(id, e)}
+            onPointerMove={moveWire}
+            onPointerUp={endWire}
+            onPointerCancel={() => setWire(null)}
+            style={{
+              position: 'absolute', zIndex: 958, width: 30 * k, height: 30 * k, display: 'grid', placeItems: 'center', cursor: 'crosshair', touchAction: 'none',
+              left: ORIGIN + f.x + f.w - 15 * k, top: ORIGIN + f.y + f.h / 2 - 15 * k,
+            }}
+          >
+            <span style={{ width: 16 * k, height: 16 * k, borderRadius: 999, background: 'var(--bg-inverse)', border: `${2.5 * k}px solid var(--bg-canvas)`, boxShadow: '0 1px 4px rgba(0,0,0,.25)' }} />
+          </div>
+        )
+      })}
+
+      {/* the colour & material wheel hovers beside its piece, on whichever side has room */}
+      <AnimatePresence>
+        {cmf && items.some((i) => i.id === cmf) && (() => {
+          const f = visibleRect(byId(cmf))
+          const v = canvas.viewCentre()
+          const half = { w: vp.w / 2 / canvas.scale.get(), h: vp.h / 2 / canvas.scale.get() }
+          const left = v.x - half.w + 8, rightEdge = v.x + half.w - 8, top = v.y - half.h + 120, bottom = v.y + half.h - 190
+          const clampX = (x: number) => Math.min(Math.max(x, left), rightEdge - WHEEL_SIZE)
+          const clampY = (y: number) => Math.min(Math.max(y, top), bottom - WHEEL_H)
+          // beside the piece if a side has room, else under it (or over it), level with its middle
+          const side: 'right' | 'left' | 'below' | 'above' =
+            f.x + f.w + 12 + WHEEL_SIZE <= rightEdge ? 'right'
+              : f.x - 12 - WHEEL_SIZE >= left ? 'left'
+              : f.y + f.h + 12 + WHEEL_H <= bottom ? 'below' : 'above'
+          const x = side === 'right' ? f.x + f.w + 12 : side === 'left' ? f.x - 12 - WHEEL_SIZE : clampX(f.x + f.w / 2 - WHEEL_SIZE / 2)
+          const y = side === 'below' ? f.y + f.h + 12 : side === 'above' ? f.y - 12 - WHEEL_H : clampY(f.y + f.h / 2 - WHEEL_H / 2)
+          return (
+            <MaterialWheel key={cmf} src={byId(cmf).src} name={nameOf(byId(cmf))} at={{ x: ORIGIN + x, y: ORIGIN + y }} side={side}
+              onAdd={(m) => addMaterial(cmf, m)} onClose={() => setCmf(null)} />
+          )
+        })()}
       </AnimatePresence>
 
       {/* resize handles on a single selected piece, above everything so they can always be caught */}
@@ -1087,6 +1317,77 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
                 )}
               </AnimatePresence>
             </motion.div>
+          )
+        })}
+      </AnimatePresence>
+
+      {/* wires: every piece plugged into a node, and the one being dragged out */}
+      <svg width={WORLD} height={WORLD} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', zIndex: 29, overflow: 'visible' }}>
+        {(() => {
+          const wire = (sx: number, sy: number, ex: number, ey: number, key: string, live = false) => {
+            const h = Math.max(50, Math.abs(ex - sx) * 0.5)
+            const dir = ex >= sx ? 1 : -1
+            const d = `M ${sx + ORIGIN} ${sy + ORIGIN} C ${sx + ORIGIN + h * dir} ${sy + ORIGIN}, ${ex + ORIGIN - h} ${ey + ORIGIN}, ${ex + ORIGIN} ${ey + ORIGIN}`
+            return (
+              <g key={key}>
+                <path d={d} fill="none" stroke="var(--bg-inverse)" strokeWidth={2} strokeLinecap="round" strokeDasharray={live ? '6 6' : undefined} opacity={live ? 0.6 : 0.55} />
+                <circle cx={sx + ORIGIN} cy={sy + ORIGIN} r={4} fill="var(--bg-inverse)" />
+              </g>
+            )
+          }
+          const from = (it: Item, toX: number) => {
+            const f = visibleRect(it)
+            return f.x + f.w / 2 < toX ? { x: f.x + f.w + 4, y: f.y + f.h / 2 } : { x: f.x - 4, y: f.y + f.h / 2 }
+          }
+          return (
+            <>
+              {nodes.flatMap((n) =>
+                n.inputs.map((id) => {
+                  const it = items.find((i) => i.id === id)
+                  if (!it) return null
+                  const s0 = from(it, n.x)
+                  return wire(s0.x, s0.y, n.x - 7, n.y + PORT_Y, `${n.id}-${id}`)
+                }),
+              )}
+              {wiring && (() => {
+                const it = items.find((i) => i.id === wiring.from)
+                if (!it) return null
+                const target = wiring.to ? items.find((i) => i.id === wiring.to) : undefined
+                const t = target ? visibleRect(target) : null
+                // over a piece, the wire lands on its nearest side; otherwise it follows the pointer
+                const src = visibleRect(it)
+                const end = t ? { x: src.x + src.w / 2 < t.x + t.w / 2 ? t.x - 4 : t.x + t.w + 4, y: t.y + t.h / 2 } : { x: wiring.x, y: wiring.y }
+                const s0 = from(it, end.x)
+                return wire(s0.x, s0.y, end.x, end.y, 'live', true)
+              })()}
+            </>
+          )
+        })()}
+      </svg>
+
+      {/* create nodes */}
+      <AnimatePresence>
+        {nodes.map((n) => {
+          const wired = n.inputs.map((i) => items.find((x) => x.id === i)).filter((i): i is Item => !!i)
+          const chip = wired.find((i) => i.colour)?.colour
+          return (
+            <div key={n.id} style={{ position: 'absolute', left: ORIGIN + n.x, top: ORIGIN + n.y, zIndex: 30 }}>
+              <CreateNode
+                node={n}
+                inputs={wired}
+                result={nodeImage(n)}
+                generated={recipeFor(n)?.src}
+                backdrop={chip ? `color-mix(in srgb, ${chip} 35%, var(--bg-canvas))` : undefined}
+                onMove={(dx, dy) => editNode(n.id, (m) => ({ ...m, x: m.x + dx / zoom(), y: m.y + dy / zoom() }))}
+                onPrompt={(prompt) => editNode(n.id, (m) => ({ ...m, prompt }))}
+                onCreate={() => makeImage(n.id)}
+                onAgain={() => makeImage(n.id, true)}
+                onAdd={() => addMade(n)}
+                onUnwire={(id) => editNode(n.id, (m) => ({ ...m, inputs: m.inputs.filter((x) => x !== id), status: m.inputs.length > 1 ? m.status : 'idle' }))}
+                onDelete={() => setNodes((list) => list.filter((m) => m.id !== n.id))}
+                onMeasure={(h) => setNodeH((m) => (m[n.id] === h ? m : { ...m, [n.id]: h }))}
+              />
+            </div>
           )
         })}
       </AnimatePresence>
@@ -1249,13 +1550,13 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
         <ShareIcon />
       </IconButton>
 
-      {/* when the board feels done: sum it up */}
+      {/* when the board feels done: sum it up as a concept card (phone and web) */}
       <motion.button
         whileTap={{ scale: 0.95 }}
         onClick={() => { setSelected([]); setDirection(true) }}
         style={{ position: 'absolute', right: 60, top: 'var(--ui-top)', zIndex: 50, height: 44, padding: '0 16px', borderRadius: 999, background: '#111', color: '#fff', fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}
       >
-        Direction
+        Concept card
       </motion.button>
 
       <AnimatePresence>
@@ -1276,21 +1577,30 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
         )}
       </AnimatePresence>
 
-      <AnimatePresence>{rec && <Recommendation key="rec" onAdd={addFinds} onDismiss={() => setRec(false)} />}</AnimatePresence>
+      <AnimatePresence>{rec && <Recommendation key="rec" onAdd={addPicks} onDismiss={() => setRec(false)} />}</AnimatePresence>
 
-      {/* one mic, always bottom right: with nothing selected it talks to the whole board,
-          with pieces selected it opens into their suggestions */}
-      {!web && phase.k !== 'thinking' && !explore && !shareOpen && !merging && !direction /* sheets cover the dock */ && (
-        <Dock
-          open={selected.length > 0 && (phase.k === 'idle' || phase.k === 'listening')}
-          suggestions={suggestionsFor(selected.length)}
-          onSuggest={suggest}
-          onDelete={() => deletePieces(selected)}
-          tip={tip}
-          tipText={noteMode ? 'Hold the mic and say your note' : selected.length ? 'Hold and say what to do' : undefined}
-          active={noteMode ? 'Add a note' : undefined}
-          mic={<Mic size={selected.length ? 44 : 56} holding={phase.k === 'listening'} onHoldStart={() => startListening(selected)} onHoldEnd={endListening} onArm={setArmed} />}
-        />
+      {/* the phone: the mic in the bottom right, and the selection's suggestions beside it */}
+      {!web && phase.k !== 'thinking' && !explore && !shareOpen && !merging && !direction /* sheets cover the tools */ && (
+        <>
+          {selected.length > 0 && (phase.k === 'idle' || phase.k === 'listening') && (
+            <Dock
+              open
+              right={68}
+              bottom={106} // its middle level with the mic's (44px tall, 110 up): 6 + 40 + 6 tall
+              suggestions={suggestionsFor(selected.length)}
+              onSuggest={suggest}
+              onDelete={() => deletePieces(selected)}
+              tip={false}
+              active={noteMode ? 'Add a note' : undefined}
+              mic={null}
+            />
+          )}
+          {/* one dark mic near where Figma's + sits, 8px further in so its halo (up to ~7.5px out) stays inside the margin */}
+          <div onPointerDown={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 16, bottom: 110, zIndex: 47 }}>
+            <HoldTip show={tip} align="right">{noteMode ? 'Hold the mic and say your note' : selected.length ? 'Hold and say what to do' : undefined}</HoldTip>
+            <Mic dark size={44} holding={phase.k === 'listening'} onHoldStart={() => startListening(selected)} onHoldEnd={endListening} onArm={setArmed} />
+          </div>
+        </>
       )}
 
       {/* the web: tools along the bottom, and what you can do with the selection above them */}
@@ -1318,7 +1628,7 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
             onPins={openPins}
             onFrame={() => webSuggest({ label: 'Group', phrase: 'Group these' })}
             onMerge={() => webSuggest({ label: 'Merge', phrase: 'Merge these together' })}
-            onColours={() => webSuggest({ label: 'Pull colours', phrase: 'Pull the colours from this' })}
+            onColours={() => webSuggest({ label: 'Colour & material', phrase: 'Show the colours and materials in this' })}
             onDirection={() => { setSelected([]); setDirection(true) }}
             onUndo={undo}
           />
@@ -1369,7 +1679,8 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
         subject={lastExplore.current.subject}
         initialTab={lastExplore.current.tab}
         onClose={() => setExplore(null)}
-        onAdd={extractPost}
+        onAdd={addSimilar}
+        onRemove={(id) => setItems((list) => list.filter((i) => i.id !== id && !i.id.startsWith(`${id}-c`)))} // the pin and its colours
       />
     </div>
   )

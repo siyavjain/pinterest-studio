@@ -314,8 +314,8 @@ export function Toolbar({ tool, onTool, pen, onPen, ink, onInk, width, onWidth, 
             <Rule />
             <ToolButton label="Frame" keyHint="F" off={selected < 2 ? 'select two or more pieces' : undefined} onClick={onFrame}>{ICON.frame}</ToolButton>
             <ToolButton label="Merge" off={selected < 2 ? 'select two or more pieces' : undefined} onClick={onMerge}>{ICON.merge}</ToolButton>
-            <ToolButton label="Pull colours" off={selected !== 1 ? 'select one piece' : undefined} onClick={onColours}>{ICON.colours}</ToolButton>
-            <ToolButton label="Direction card" onClick={onDirection}>{ICON.direction}</ToolButton>
+            <ToolButton label="Colour & material" off={selected !== 1 ? 'select one piece' : undefined} onClick={onColours}>{ICON.colours}</ToolButton>
+            <ToolButton label="Concept card" onClick={onDirection}>{ICON.direction}</ToolButton>
             <Rule />
             <ToolButton label="Undo" keyHint="⌘Z" onClick={onUndo}>{ICON.undo}</ToolButton>
           </motion.div>

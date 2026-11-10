@@ -1,8 +1,8 @@
 import type { Direction } from './DirectionCard'
 
-// Saved direction cards, one per project. Kept in this browser so they survive
-// leaving the board and reloading; the prototype has no server.
-const KEY = 'studio-directions'
+// Saved concept cards (once called direction cards), one per project. Kept in this browser so
+// they survive leaving the board and reloading; the prototype has no server.
+const KEY = 'studio-concepts'
 
 const read = (): Record<string, Direction> => {
   try {

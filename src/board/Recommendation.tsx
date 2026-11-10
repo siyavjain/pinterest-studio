@@ -3,13 +3,14 @@ import { motion } from 'framer-motion'
 import { CloseIcon, SparkIcon } from '../components/Icons'
 import { Pill } from '../components/Button'
 import { asset } from '../components/asset'
-import { FINDS } from './ingredients'
-
-// three florals that suit the board; adding them drops in their cut-outs
-const PICKS = ['phone', 'bags', 'tulip']
+import { CUT_OF } from './cutouts'
+// three pins that suit this board, shown on the card; adding them drops in what Studio extracts
+// from each (their cut-outs)
+const PHOTOS = ['image 59', 'image 53', 'image 60']
+export const PICKS = PHOTOS.map((photo) => ({ photo, ...CUT_OF[photo] }))
 
 /** "Studio noticed" suggestion card. Swipe it away, dismiss, or add. */
-export default function Recommendation({ onAdd, onDismiss }: { onAdd: (srcs: string[]) => void; onDismiss: () => void }) {
+export default function Recommendation({ onAdd, onDismiss }: { onAdd: (picks: typeof PICKS) => void; onDismiss: () => void }) {
   const [added, setAdded] = useState(false)
 
   return (
@@ -29,10 +30,10 @@ export default function Recommendation({ onAdd, onDismiss }: { onAdd: (srcs: str
       }}
     >
       <div style={{ position: 'relative', width: added ? 44 + 2 * 26 : 44 + 2 * 14, height: 44, flexShrink: 0, transition: 'width .3s' }}>
-        {PICKS.map((id, i) => (
+        {PICKS.map((p, i) => (
           <motion.img
-            key={id}
-            src={asset(FINDS[id].photo)}
+            key={p.photo}
+            src={asset(p.photo)}
             alt=""
             animate={{ x: added ? i * 26 : i * 14 }}
             transition={{ type: 'spring', stiffness: 260, damping: 22 }}
@@ -44,7 +45,7 @@ export default function Recommendation({ onAdd, onDismiss }: { onAdd: (srcs: str
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: 0.6, fontSize: 11 }}>
           <SparkIcon /> Studio noticed
         </div>
-        <div style={{ fontSize: 14, fontWeight: 600, lineHeight: '18px' }}>{added ? 'Florals added' : 'More florals to match?'}</div>
+        <div style={{ fontSize: 14, fontWeight: 600, lineHeight: '18px' }}>{added ? `${PICKS.length} cut-outs added` : 'More pins like these?'}</div>
       </motion.div>
       {!added && (
         <>

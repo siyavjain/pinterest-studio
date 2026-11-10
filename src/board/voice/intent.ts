@@ -17,17 +17,17 @@ export type Suggestion = { label: string; phrase: string }
 
 /** What each piece is called when Studio talks about it, and its main colour. */
 export const PIECES: Record<string, { label: string; colour: 'green' | 'pink' | 'purple' | 'neutral' }> = {
-  'board-meadow': { label: 'meadow', colour: 'green' },
-  'board-ribbon': { label: 'ribbon', colour: 'pink' },
-  'board-scary': { label: 'lime type', colour: 'green' },
-  'board-hand': { label: 'hand', colour: 'neutral' },
-  'board-cap': { label: 'purple cap', colour: 'purple' },
-  'board-flower': { label: 'flower', colour: 'pink' },
-  'board-blob': { label: 'gradient pill', colour: 'pink' },
-  'board-gradient': { label: 'swirl', colour: 'purple' },
-  'board-bloom': { label: 'bloom', colour: 'green' },
-  'board-hill': { label: 'hill', colour: 'green' },
-  'ws-14': { label: 'bouquet', colour: 'neutral' },
+  'image 34': { label: 'leaf portrait', colour: 'green' },
+  'image 35': { label: 'sky leaves', colour: 'green' },
+  'image 36': { label: 'hanging leaves', colour: 'neutral' },
+  'image 37': { label: 'veil', colour: 'neutral' },
+  'image 38': { label: 'palm', colour: 'green' },
+  'image 39': { label: 'ivy window', colour: 'green' },
+  'image 40': { label: 'portrait', colour: 'neutral' },
+  'image 41': { label: 'big leaf', colour: 'green' },
+  'image 42': { label: 'dry leaf', colour: 'green' },
+  'image 44': { label: 'light face', colour: 'neutral' },
+  'image 45': { label: 'water face', colour: 'neutral' },
 }
 export const labelOf = (src: string) => PIECES[src]?.label ?? 'piece'
 
@@ -44,13 +44,13 @@ export function suggestionsFor(count: number): Suggestion[] {
     return [
       { label: 'More inspiration', phrase: 'Find more inspiration for this board' },
       { label: 'Group by colour', phrase: 'Group everything by colour' },
-      { label: 'Direction card', phrase: 'Make a direction card for this board' },
+      { label: 'Concept card', phrase: 'Make a concept card for this board' },
     ]
   if (count === 1)
     return [
-      { label: 'More like this', phrase: 'Find more like this' },
+      { label: 'Add more', phrase: 'Find more like this' },
       { label: 'Add a note', phrase: 'Add a note, love the texture on this' },
-      { label: 'Pull colours', phrase: 'Pull the colours from this' },
+      { label: 'Colour & material', phrase: 'Show the colours and materials in this' },
     ]
   return [
     { label: 'Merge', phrase: 'Merge these together' },
@@ -67,10 +67,13 @@ const VERBS = /^(delete|remove|bin|trash|merge|combine|blend|mix|mash|group|clus
 export function parse(raw: string): Intent {
   const t = raw.toLowerCase().trim()
   const lead = t.replace(POLITE, '')
+  // describing a picture to be made ("I want a girl with…", "make an image of…") is a merge with a prompt
+  if (/^(i want|i'?d like|generate|imagine)\b/.test(lead) || (/^(make|create)\b/.test(lead) && /\b(a|an|image|picture|photo)\b/.test(lead)))
+    if (!/\b(note|comment|group|frame|direction|concept)\b/.test(lead)) return { kind: 'merge' }
   if (!VERBS.test(lead)) return { kind: 'unclear' }
   // only when it leads, so "add a note: remove the background" stays a note
   if (/^(delete|remove|bin|trash|get rid)\b/.test(lead)) return { kind: 'delete' }
-  if (/\b(direction|summar|wrap (it )?up|done|finish)/.test(t)) return { kind: 'direction' }
+  if (/\b(concept|direction|summar|wrap (it )?up|done|finish)/.test(t)) return { kind: 'direction' } // the concept card
   if (/\b(merge|combine|blend|mix|mash)\b/.test(t)) return { kind: 'merge' }
   if (/\b(group|cluster|organi[sz]e|sort)\b|put .* together/.test(t)) {
     if (/colou?r/.test(t)) return { kind: 'groupByColour' }
@@ -81,7 +84,7 @@ export function parse(raw: string): Intent {
     const text = raw.replace(/^.*?\b(note|remember|comment|remind me)\b[:,]?\s*(that\s+)?/i, '').trim()
     return { kind: 'note', text: text ? capitalise(text) : 'Voice note' }
   }
-  if (/\b(colou?rs?|palette|ingredients?|textures?)\b/.test(t)) return { kind: 'colours' }
+  if (/\b(colou?rs?|palette|ingredients?|textures?|materials?|finish(es)?|cmf)\b/.test(t)) return { kind: 'colours' }
   if (/\b(share|common|alike|similar about)\b/.test(t)) return { kind: 'share' }
   if (/\b(similar|more like|explore|find|inspiration|search|show me)\b/.test(t)) return { kind: 'similar' }
   return { kind: 'unclear' }

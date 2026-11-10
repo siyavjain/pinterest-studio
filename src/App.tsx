@@ -38,6 +38,8 @@ const fade = {
   exit: { opacity: 0, y: -24 },
   transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
 }
+// into the extract screen: it's there at once and its pins pour in over home as home fades
+const pour = { ...fade, initial: { opacity: 1, y: 0 } }
 
 export default function App() {
   // ?screen=board jumps straight to a screen while designing
@@ -97,8 +99,8 @@ export default function App() {
       <div className="fit" style={{ width: DEVICE.w * fit, height: DEVICE.h * fit }}>
       <div className="device" style={{ transform: `scale(${fit})` }}>
       <div className="phone">
-        <AnimatePresence mode="wait">
-          <motion.div key={screen} className="screen" {...fade}>
+        <AnimatePresence mode={screen === 'extract' ? 'sync' : 'wait'}>
+          <motion.div key={screen} className="screen" {...(screen === 'extract' ? pour : fade)}>
             {screen === 'home' && <Home onTake={() => setScreen('extract')} />}
             {screen === 'extract' && (
               <Extract onBack={() => setScreen('home')} onExtract={() => setScreen('loading')} />
@@ -108,7 +110,7 @@ export default function App() {
             {screen === 'library' && <Library onOpen={(_, direction) => openProject(direction)} onNew={() => setScreen('home')} />}
           </motion.div>
         </AnimatePresence>
-        <NavBar active="studio" onHome={() => setScreen('home')} onStudio={studio} />
+        <NavBar active="studio" brand={screen !== 'library'} onHome={() => setScreen('home')} onStudio={studio} />
         <div id="overlay" style={{ position: 'absolute', inset: 0, zIndex: 40, pointerEvents: 'none' }} />
         <div className="chrome" aria-hidden>
           <div className="status">

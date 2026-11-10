@@ -27,38 +27,47 @@ const Lock = () => (
   </svg>
 )
 
-/** Figma "Project Stack" at library size: back and middle fanned behind the front card. */
+/** Figma "Project Stack" (Studio home, 862:553): 181 × 267, back and middle fanned behind the front card. */
+const STACK = { w: 181, h: 267 }
+const CARD = { w: 161.6, h: 230.2, r: 16.8 }
 function Stack({ p }: { p: Project }) {
-  const card = (name: string, style: React.CSSProperties) => (
-    <img src={asset(`p${p.img}-${name}`)} alt="" style={{ position: 'absolute', width: 131, height: 187, borderRadius: 14, objectFit: 'cover', ...style }} />
+  // back and middle are placed by their centres, then turned, as in the frame
+  const card = (name: string, cx: number, cy: number, turn: number) => (
+    <img
+      src={asset(`p${p.img}-${name}`)}
+      alt=""
+      style={{ position: 'absolute', left: cx - CARD.w / 2, top: cy - CARD.h / 2, width: CARD.w, height: CARD.h, borderRadius: CARD.r, objectFit: 'cover', transform: `rotate(${turn}deg)` }}
+    />
   )
   return (
-    <motion.div whileHover="fan" whileTap="press" style={{ position: 'relative', width: 171, height: 217 }}>
+    // fanning turns the back cards wider than the stack, so the whole stack eases down a touch
+    // while it fans: it stays inside its own box and never crosses the screen's margin
+    <motion.div whileHover="fan" whileTap="press" variants={{ fan: { scale: 0.9 } }} transition={{ duration: 0.3, ease }} style={{ position: 'relative', width: STACK.w, height: STACK.h }}>
       <motion.div variants={{ fan: { rotate: -3, x: -4 }, press: { rotate: 0 } }} style={{ position: 'absolute', inset: 0 }}>
-        {card('back', { left: 23.4, top: 8, transform: 'rotate(-4.39deg)' })}
+        {card('back', 90, 125.2, -4.39)}
       </motion.div>
       <motion.div variants={{ fan: { rotate: 3, x: 4 }, press: { rotate: 0 } }} style={{ position: 'absolute', inset: 0 }}>
-        {card('middle', { left: 26.5, top: 16.3, transform: 'rotate(2.34deg)' })}
+        {card('middle', 93.8, 135.2, 2.34)}
       </motion.div>
       <motion.div
         variants={{ press: { scale: 0.97 } }}
-        style={{ position: 'absolute', left: 19.7, top: 23.4, width: 131.7, height: 187, borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 20px rgba(0,0,0,.1)' }}
+        style={{ position: 'absolute', left: 4.5, top: 28.8, width: 162.1, height: 230.2, borderRadius: CARD.r, overflow: 'hidden', boxShadow: '0 8px 20px rgba(0,0,0,.1)' }}
       >
         <img src={asset(`p${p.img}-front`)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         <div
           style={{
-            position: 'absolute', left: 0, right: 0, bottom: 0, height: 43, borderRadius: '0 0 14px 14px',
-            backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
+            position: 'absolute', left: 0, right: 0, bottom: 0, height: 53.3, borderRadius: `0 0 ${CARD.r}px ${CARD.r}px`,
+            backdropFilter: 'blur(4.9px)', WebkitBackdropFilter: 'blur(4.9px)',
             background: 'linear-gradient(to bottom, rgba(0,0,0,.01), rgba(0,0,0,.55))',
           }}
         />
-        <div style={{ position: 'absolute', left: 7, bottom: 7, display: 'flex', alignItems: 'center', gap: 3.4, color: 'var(--bg-canvas)' }}>
+        <div style={{ position: 'absolute', left: 8.4, bottom: 8.6, display: 'flex', alignItems: 'center', gap: 4.2, color: 'var(--bg-canvas)' }}>
           {p.avatar ? (
-            <img src={asset(p.avatar)} alt="" style={{ width: 11.4, height: 11.4, borderRadius: 999 }} />
+            <img src={asset(p.avatar)} alt="" style={{ width: 14, height: 14, borderRadius: 999 }} />
           ) : (
-            <span style={{ width: 11.4, height: 11.4, borderRadius: 999, background: 'var(--bg-default)' }} />
+            <span style={{ width: 14, height: 14, borderRadius: 999, background: 'var(--bg-default)' }} />
           )}
-          <span style={{ fontSize: 6.84, fontWeight: 300 }}>{p.creator}</span>
+          <span style={{ fontSize: 8.4, lineHeight: '12.6px', fontWeight: 300 }}>{p.creator}</span>
         </div>
       </motion.div>
     </motion.div>
@@ -69,11 +78,15 @@ export default function Library({ onOpen, onNew }: { onOpen: (project: string, d
   const [filter, setFilter] = useState<Filter>('All')
   const shown = PROJECTS.filter((p) => filter === 'All' || (filter === 'Locked' ? p.locked : !p.locked))
   const kept = PROJECTS.reduce((n, p) => n + p.ingredients, 0)
+  // the stacks are Figma size on the 402-wide screen; a narrower real phone shrinks them to fit two across
+  const k = innerWidth <= 500 ? Math.min(1, (innerWidth - 40) / (STACK.w * 2)) : 1
 
   return (
     // the grid scrolls under the header; the nav floats over the bottom
     <div className="screen" style={{ overflowY: 'auto', touchAction: 'pan-y', scrollbarWidth: 'none' }}>
-      <div style={{ padding: '70px 8px 0' }}>
+      {/* the title and filters stay pinned while the projects scroll under them */}
+      {/* 16px above (below the 54px status bar) and 16px below */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 3, padding: `${54 + 16}px 8px 16px`, background: 'var(--bg-canvas)' }}>
         <div style={{ fontSize: 36, lineHeight: '44px', fontWeight: 600 }}>Studio</div>
         <div style={{ fontSize: 16, lineHeight: '24px', color: 'var(--text-secondary)' }}>
           {PROJECTS.length} projects · {kept} ingredients kept
@@ -105,7 +118,7 @@ export default function Library({ onOpen, onNew }: { onOpen: (project: string, d
         </div>
       </div>
 
-      <motion.div layout style={{ display: 'grid', gridTemplateColumns: '171px 171px', justifyContent: 'space-between', rowGap: 16, padding: '24px 14px 150px' }}>
+      <motion.div layout style={{ display: 'grid', gridTemplateColumns: `${STACK.w * k}px ${STACK.w * k}px`, columnGap: 22, rowGap: 16, padding: '0 8px 150px 10px' }}>
         <AnimatePresence mode="popLayout">
           {shown.map((p) => {
             const direction = loadDirection(p.name)
@@ -122,19 +135,23 @@ export default function Library({ onOpen, onNew }: { onOpen: (project: string, d
               onClick={() => onOpen(p.name)}
               style={{ display: 'grid', justifyItems: 'center', alignContent: 'start', gap: 2, textAlign: 'center', cursor: 'pointer' }}
             >
-              <Stack p={p} />
-              <div style={{ position: 'relative', width: 171 }}>
+              <div style={{ width: STACK.w * k, height: STACK.h * k }}>
+                <div style={{ zoom: k }}>
+                  <Stack p={p} />
+                </div>
+              </div>
+              <div style={{ position: 'relative', width: STACK.w * k }}>
                 <div style={{ fontSize: 18, lineHeight: '26px' }}>{p.name}</div>
                 <div style={{ fontSize: 12, lineHeight: '18px', fontWeight: 300, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                   {p.posts} posts · {p.ingredients} ingredients
                 </div>
                 {p.locked && (
-                  <span style={{ position: 'absolute', left: 133, top: -12.6 }}>
+                  <span style={{ position: 'absolute', left: STACK.w * k - 36, top: -14 }}>
                     <Lock />
                   </span>
                 )}
               </div>
-              {/* a saved direction card: tap to open the board on it */}
+              {/* a saved concept card: tap to open the board on it */}
               {direction && (
                 <motion.button
                   whileTap={{ scale: 0.95 }}

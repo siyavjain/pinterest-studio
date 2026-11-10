@@ -9,11 +9,20 @@ export const ORIGIN = 1300
 const MIN_SCALE = 0.45
 const MAX_SCALE = 2.5
 
+/** One finger drawing on the board instead of moving it (the phone's lasso), in viewport px. */
+export type Draw = {
+  start: (p: { x: number; y: number }) => void
+  move: (p: { x: number; y: number }) => void
+  end: () => void
+  cancel: () => void // a second finger came down: it's a pinch after all
+}
+
 /**
  * Pan (one finger / mouse drag / trackpad scroll) and zoom (pinch / ctrl+scroll)
  * for the board. Returns motion values for the world layer plus pointer handlers.
+ * With `draw`, one finger draws instead and the board moves with two.
  */
-export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty: () => void) {
+export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty: () => void, draw?: RefObject<Draw | null>) {
   const x = useMotionValue(-ORIGIN)
   const y = useMotionValue(-ORIGIN)
   const scale = useMotionValue(1)
@@ -22,6 +31,7 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
   const pinch = useRef<{ dist: number; mx: number; my: number } | null>(null)
   const velocity = useRef({ x: 0, y: 0, t: 0 })
   const moved = useRef(false)
+  const drawing = useRef<{ from: { x: number; y: number }; on: boolean } | null>(null)
 
   const rect = () => viewport.current!.getBoundingClientRect()
   // the viewport's own size, unaffected by the phone being scaled to fit the window
@@ -63,7 +73,10 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
     moved.current = false
     pointers.current.set(e.pointerId, local(e))
     velocity.current = { x: 0, y: 0, t: performance.now() }
+    if (pointers.current.size === 1 && draw?.current) drawing.current = { from: local(e), on: false }
     if (pointers.current.size === 2) {
+      if (drawing.current?.on) draw?.current?.cancel()
+      drawing.current = null
       const [a, b] = [...pointers.current.values()]
       pinch.current = { dist: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }
     }
@@ -75,7 +88,15 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
     const p = local(e)
     pointers.current.set(e.pointerId, p)
 
-    if (pointers.current.size === 1) {
+    if (pointers.current.size === 1 && drawing.current) {
+      // a drag only starts drawing once it's clearly a drag, so a tap stays a tap
+      if (!drawing.current.on && Math.hypot(p.x - drawing.current.from.x, p.y - drawing.current.from.y) > 8) {
+        drawing.current.on = true
+        moved.current = true
+        draw?.current?.start(drawing.current.from)
+      }
+      if (drawing.current.on) draw?.current?.move(p)
+    } else if (pointers.current.size === 1) {
       const dx = p.x - prev.x
       const dy = p.y - prev.y
       if (Math.abs(dx) + Math.abs(dy) > 0.5) moved.current = true
@@ -100,6 +121,11 @@ export function useCanvas(viewport: RefObject<HTMLDivElement | null>, onTapEmpty
     if (!pointers.current.delete(e.pointerId)) return
     if (pointers.current.size < 2) pinch.current = null
     if (pointers.current.size > 0) return
+    if (drawing.current) {
+      const was = drawing.current.on
+      drawing.current = null
+      if (was) return draw?.current?.end()
+    }
     if (!moved.current) {
       onTapEmpty()
       return
