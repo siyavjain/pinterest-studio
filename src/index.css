@@ -34,6 +34,8 @@
 html, body, #root { height: 100%; margin: 0; }
 button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
 img { display: block; user-select: none; -webkit-user-drag: none; }
+/* the red dot in components/Cursor.tsx stands in for the system cursor on mouse and trackpad */
+@media (pointer: fine) { *, *::before, *::after { cursor: none !important; } }
 
 /* Phone stage: real size inside a device frame on desktop, full screen on a phone */
 .stage {

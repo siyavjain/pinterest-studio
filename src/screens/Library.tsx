@@ -5,11 +5,11 @@ import { asset } from '../components/asset'
 import { loadDirection } from '../board/directions'
 
 // The Studio tab once you've worked on a board: every project as a small fanned stack.
-type Project = { name: string; img: number; posts: number; ingredients: number; creator: string; avatar?: string; locked?: boolean }
+type Project = { name: string; img: number; images?: Partial<Record<'back' | 'middle' | 'front', string>>; posts: number; ingredients: number; creator: string; avatar?: string; locked?: boolean }
 
-// img n = the p{n} image set in home/assets; names match what's in each set
+// img n = the p{n} image set in home/assets; names match what's in each set. images: the project's own pins instead
 const PROJECTS: Project[] = [
-  { name: 'Ads', img: 3, posts: 4, ingredients: 16, creator: 'mira.okafor', avatar: 'p3-avatar' },
+  { name: 'Organic Forms', img: 3, images: { front: 'Sky leaves', middle: 'Person leaf', back: 'River' }, posts: 4, ingredients: 16, creator: 'mira.okafor', avatar: 'p3-avatar' },
   { name: 'Sport', img: 5, posts: 6, ingredients: 12, creator: 'elle.reyes', locked: true },
   { name: 'Interiors', img: 2, posts: 5, ingredients: 9, creator: 'theo.marsh', avatar: 'p2-avatar' },
   { name: 'Shoes', img: 4, posts: 3, ingredients: 8, creator: 'jun.park', avatar: 'p4-avatar', locked: true },
@@ -31,10 +31,11 @@ const Lock = () => (
 const STACK = { w: 181, h: 267 }
 const CARD = { w: 161.6, h: 230.2, r: 16.8 }
 function Stack({ p }: { p: Project }) {
+  const src = (name: 'back' | 'middle' | 'front') => asset(p.images?.[name] ?? `p${p.img}-${name}`)
   // back and middle are placed by their centres, then turned, as in the frame
-  const card = (name: string, cx: number, cy: number, turn: number) => (
+  const card = (name: 'back' | 'middle', cx: number, cy: number, turn: number) => (
     <img
-      src={asset(`p${p.img}-${name}`)}
+      src={src(name)}
       alt=""
       style={{ position: 'absolute', left: cx - CARD.w / 2, top: cy - CARD.h / 2, width: CARD.w, height: CARD.h, borderRadius: CARD.r, objectFit: 'cover', transform: `rotate(${turn}deg)` }}
     />
@@ -53,12 +54,14 @@ function Stack({ p }: { p: Project }) {
         variants={{ press: { scale: 0.97 } }}
         style={{ position: 'absolute', left: 4.5, top: 28.8, width: 162.1, height: 230.2, borderRadius: CARD.r, overflow: 'hidden', boxShadow: '0 8px 20px rgba(0,0,0,.1)' }}
       >
-        <img src={asset(`p${p.img}-front`)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img src={src('front')} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         <div
           style={{
-            position: 'absolute', left: 0, right: 0, bottom: 0, height: 53.3, borderRadius: `0 0 ${CARD.r}px ${CARD.r}px`,
-            backdropFilter: 'blur(4.9px)', WebkitBackdropFilter: 'blur(4.9px)',
-            background: 'linear-gradient(to bottom, rgba(0,0,0,.01), rgba(0,0,0,.55))',
+            // a soft blur that eases in from nothing, so there's no hard line across the photo
+            position: 'absolute', left: 0, right: 0, bottom: 0, height: 72, borderRadius: `0 0 ${CARD.r}px ${CARD.r}px`,
+            backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
+            maskImage: 'linear-gradient(to bottom, transparent, black 70%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 70%)',
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,.35))',
           }}
         />
         <div style={{ position: 'absolute', left: 8.4, bottom: 8.6, display: 'flex', alignItems: 'center', gap: 4.2, color: 'var(--bg-canvas)' }}>
@@ -70,6 +73,12 @@ function Stack({ p }: { p: Project }) {
           <span style={{ fontSize: 8.4, lineHeight: '12.6px', fontWeight: 300 }}>{p.creator}</span>
         </div>
       </motion.div>
+      {/* the lock hangs off the front card's corner and eases with the stack on hover */}
+      {p.locked && (
+        <span style={{ position: 'absolute', left: STACK.w - 36, top: STACK.h - 12 }}>
+          <Lock />
+        </span>
+      )}
     </motion.div>
   )
 }
@@ -145,11 +154,6 @@ export default function Library({ onOpen, onNew }: { onOpen: (project: string, d
                 <div style={{ fontSize: 12, lineHeight: '18px', fontWeight: 300, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                   {p.posts} posts · {p.ingredients} ingredients
                 </div>
-                {p.locked && (
-                  <span style={{ position: 'absolute', left: STACK.w * k - 36, top: -14 }}>
-                    <Lock />
-                  </span>
-                )}
               </div>
               {/* a saved concept card: tap to open the board on it */}
               {direction && (

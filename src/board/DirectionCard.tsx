@@ -139,19 +139,37 @@ export default function DirectionCard({ items, saved, onClose, onSave }: {
 
   const swatches = palette.slice(0, 5)
 
-  // the name's box grows with it, so a one-line name leaves no gap
+
+  // the page's width: the phone keeps Figma's 402; a wide window gets a centred column up to 1080
+  const scroller = useRef<HTMLDivElement>(null)
+  const [vw, setVw] = useState(402)
+  useEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setVw(el.clientWidth))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const wide = vw >= 760
+  const W = wide ? Math.min(vw - 96, 1080) : Math.min(vw, 402)
+  const col: React.CSSProperties = { width: W, margin: '0 auto', boxSizing: 'border-box', padding: wide ? 0 : '0 20px' }
+
+  // the name's box grows with it (and with the bigger type on a wide screen), so it never clips
   const titleBox = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     const el = titleBox.current
     if (!el) return
     el.style.height = '0px'
     el.style.height = `${el.scrollHeight}px`
-  }, [title])
+  }, [title, wide, W])
 
-  const kicker = (text: string) => <div style={{ fontSize: 13, lineHeight: '18px', color: MUTED }}>{text}</div>
+  const kicker = (text: string) => <div style={{ fontSize: wide ? 14 : 13, lineHeight: '18px', color: MUTED }}>{text}</div>
   const heading = (text: string) => (
-    <h2 style={{ margin: '4px 0 0', fontSize: 40, lineHeight: '42px', fontWeight: 600, letterSpacing: '-0.03em', color: '#111' }}>{text}</h2>
+    <h2 style={{ margin: '4px 0 0', fontSize: wide ? 56 : 40, lineHeight: wide ? '58px' : '42px', fontWeight: 600, letterSpacing: '-0.03em', color: '#111' }}>{text}</h2>
   )
+
+  // materials and textures: Figma's spots on the phone, rows that share the width on a wide screen
+  const sphereSize = (i: number) => (wide ? [Math.min(240, W * 0.22), Math.min(170, W * 0.16), Math.min(205, W * 0.19), Math.min(140, W * 0.13)][i] : CONCEPT.materials[i].size)
 
   return (
     <motion.div
@@ -165,6 +183,7 @@ export default function DirectionCard({ items, saved, onClose, onSave }: {
     {/* the share sheet opens here, above the card rather than under it */}
     <div id="concept-overlay" style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }} />
     <div
+      ref={scroller}
       data-scroll // the board's trackpad panning leaves this alone, so the card scrolls
       style={{ position: 'absolute', inset: 0, touchAction: 'pan-y', overscrollBehavior: 'contain', background: 'var(--bg-canvas)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none' }}
     >
@@ -175,111 +194,124 @@ export default function DirectionCard({ items, saved, onClose, onSave }: {
         </IconButton>
       </div>
 
-      {/* the Figma "Concept card · full page": a 402-wide page, drawn larger on the web */}
-      <div style={{ width: 402, margin: '0 auto', zoom: web ? 1.4 : 1 } as React.CSSProperties}>
-        {/* ---------- hero: a blurred, grainy wash of the board with the concept said in the middle ---------- */}
-        <section style={{ position: 'relative', height: 483, overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', left: -60, top: -60, width: 522, height: 820, overflow: 'hidden' }}>
-            <img src={asset(CONCEPT.wash)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(40px)' }} />
-            <Grain opacity={0.3} />
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(252,250,247,.23)' }} />
-          </div>
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.8, ease }}
-            style={{ position: 'absolute', left: 39, top: 180, width: 324, display: 'grid', justifyItems: 'center', textAlign: 'center' }}
-          >
-            <div style={{ fontSize: 13, lineHeight: '18px', color: 'rgba(17,17,17,.7)' }}>Concept</div>
-            {/* the name wraps and can be retyped */}
-            <textarea
-              aria-label="Concept name"
-              ref={titleBox}
-              value={title}
-              rows={1}
-              onChange={(e) => setTitle(e.target.value.replace(/\n/g, ' '))}
-              style={{ display: 'block', width: '100%', marginTop: 4, border: 0, outline: 'none', padding: 0, resize: 'none', background: 'none', font: 'inherit', fontSize: 38, lineHeight: '40px', fontWeight: 600, letterSpacing: '-0.03em', color: '#111', textAlign: 'center', overflow: 'hidden' }}
-            />
-            <p style={{ margin: '8px 0 0', fontSize: 15, lineHeight: '21px', fontWeight: 500, color: '#111' }}>{CONCEPT.about}</p>
-          </motion.div>
-        </section>
+      {/* ---------- hero: a blurred, grainy wash of the board with the concept said in the middle ---------- */}
+      <section style={{ position: 'relative', height: wide ? Math.max(460, Math.min(620, vw * 0.45)) : 483, overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
+        <div style={{ position: 'absolute', inset: -60, overflow: 'hidden' }}>
+          <img src={asset(CONCEPT.wash)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(40px)' }} />
+          <Grain opacity={0.3} />
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(252,250,247,.23)' }} />
+        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.8, ease }}
+          style={{ position: 'relative', width: wide ? Math.min(680, W) : 324, marginTop: wide ? 0 : -26, display: 'grid', justifyItems: 'center', textAlign: 'center' }}
+        >
+          <div style={{ fontSize: wide ? 15 : 13, lineHeight: '18px', color: 'rgba(17,17,17,.7)' }}>Concept</div>
+          {/* the name wraps and can be retyped */}
+          <textarea
+            aria-label="Concept name"
+            ref={titleBox}
+            value={title}
+            rows={1}
+            onChange={(e) => setTitle(e.target.value.replace(/\n/g, ' '))}
+            style={{ display: 'block', width: '100%', marginTop: 4, border: 0, outline: 'none', padding: 0, resize: 'none', background: 'none', font: 'inherit', fontSize: wide ? 72 : 38, lineHeight: wide ? '74px' : '40px', fontWeight: 600, letterSpacing: '-0.03em', color: '#111', textAlign: 'center', overflow: 'hidden' }}
+          />
+          <p style={{ margin: wide ? '14px 0 0' : '8px 0 0', fontSize: wide ? 19 : 15, lineHeight: wide ? '28px' : '21px', fontWeight: 500, color: '#111' }}>{CONCEPT.about}</p>
+        </motion.div>
+      </section>
 
-        {/* ---------- 01 colour: torn paper strips ---------- */}
-        <section style={{ position: 'relative', marginTop: -40, padding: '60px 7px 20px', background: 'var(--bg-canvas)', clipPath: torn(3, 'top') }}>
-          <div style={{ padding: '0 13px' }}>
-            {kicker('01 - Color')}
-            {heading('The palette')}
-          </div>
-          <div style={{ display: 'flex', marginTop: 20, height: 222 }}>
-            {swatches.map((c, i) => (
+      {/* ---------- 01 colour: torn paper strips ---------- */}
+      <section style={{ position: 'relative', marginTop: -40, padding: wide ? '80px 0 30px' : '60px 0 20px', background: 'var(--bg-canvas)', clipPath: torn(3, 'top') }}>
+        <div style={col}>
+          {kicker('01 - Color')}
+          {heading('The palette')}
+        </div>
+        <div style={{ ...col, padding: wide ? 0 : '0 7px', display: 'flex', marginTop: wide ? 28 : 20, height: wide ? 300 : 222 }}>
+          {swatches.map((c, i) => (
+            <motion.div
+              key={c}
+              initial={{ flexGrow: 0, opacity: 0 }}
+              animate={{ flexGrow: SHARE[i], opacity: 1 }}
+              transition={{ delay: 0.2 + i * 0.07, duration: 0.9, ease }}
+              style={{
+                flexBasis: 0, minWidth: 0, marginLeft: i ? -10 : 0, background: c, clipPath: torn(10 + i, 'sides'), transform: `rotate(${i % 2 ? 1.2 : -1}deg)`,
+                position: 'relative', padding: wide ? '20px 20px 24px' : '14px 14px 18px', boxSizing: 'border-box', color: ink(c),
+              }}
+            >
+              <span style={{ fontSize: wide ? 12 : 11, lineHeight: '14px', letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{SHARE[i] >= 18 ? ROLE[i] : ''}</span>
+              {/* centred on the part you can see: the next strip covers this one's right 10px */}
+              <span style={{ position: 'absolute', left: 0, right: i < swatches.length - 1 ? 10 : 0, bottom: wide ? 24 : 18, display: 'flex', flexDirection: 'column', alignItems: 'center', whiteSpace: 'nowrap', fontWeight: 300 }}>
+                <span style={{ fontSize: wide ? 17 : 12, lineHeight: wide ? '24px' : '18px' }}>{cap(nameOf(c))}</span>
+                <span style={{ fontSize: wide ? 12 : 10, lineHeight: '18px', opacity: 0.85 }}>{c.toUpperCase()}</span>
+              </span>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* ---------- 02 material: photo spheres, each named for what it feels like ---------- */}
+      <section style={{ padding: wide ? '60px 0 70px' : '20px 0 0' }}>
+        <div style={{ ...col, position: 'relative', height: wide ? 'auto' : 390 }}>
+          {kicker('02 - Material')}
+          {heading('What it’s made of')}
+          <div style={wide ? { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 36 } : undefined}>
+            {CONCEPT.materials.map((m, i) => (
               <motion.div
-                key={c}
-                initial={{ flexGrow: 0, opacity: 0 }}
-                animate={{ flexGrow: SHARE[i], opacity: 1 }}
-                transition={{ delay: 0.2 + i * 0.07, duration: 0.9, ease }}
+                key={m.name}
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: 'spring', stiffness: 160, damping: 16, delay: 0.3 + i * 0.08 }}
                 style={{
-                  flexBasis: 0, minWidth: 0, marginLeft: i ? -10 : 0, background: c, clipPath: torn(10 + i, 'sides'), transform: `rotate(${i % 2 ? 1.2 : -1}deg)`,
-                  position: 'relative', padding: '14px 14px 18px', boxSizing: 'border-box', color: ink(c),
+                  display: 'grid', justifyItems: 'center', gap: 8, width: sphereSize(i),
+                  ...(wide ? { marginTop: [30, 0, 70, 20][i] } : { position: 'absolute', left: m.at[0], top: m.at[1] - 20 }),
                 }}
               >
-                <span style={{ fontSize: 11, lineHeight: '14px', letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{SHARE[i] >= 18 ? ROLE[i] : ''}</span>
-                {/* centred on the part you can see: the next strip covers this one's right 10px */}
-                <span style={{ position: 'absolute', left: 0, right: i < swatches.length - 1 ? 10 : 0, bottom: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', whiteSpace: 'nowrap', fontWeight: 300 }}>
-                  <span style={{ fontSize: 12, lineHeight: '18px' }}>{cap(nameOf(c))}</span>
-                  <span style={{ fontSize: 10, lineHeight: '18px', opacity: 0.85 }}>{c.toUpperCase()}</span>
-                </span>
+                <Sphere m={{ kind: 'texture', src: m.src, at: [0.5, 0.45], under: '#e9e4df', name: m.name, zoom: 1.6 }} size={sphereSize(i)} />
+                <span style={{ fontSize: wide ? 14 : 12, lineHeight: '16px', color: MUTED, whiteSpace: 'nowrap' }}>{m.name}</span>
               </motion.div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ---------- 02 material: photo spheres, each named for what it feels like ---------- */}
-        <section style={{ position: 'relative', height: 410, padding: '20px 20px 0', boxSizing: 'border-box' }}>
-          {kicker('02 - Material')}
-          {heading('What it’s made of')}
-          {CONCEPT.materials.map((m, i) => (
-            <motion.div
-              key={m.name}
-              initial={{ opacity: 0, scale: 0.6 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: 'spring', stiffness: 160, damping: 16, delay: 0.3 + i * 0.08 }}
-              style={{ position: 'absolute', left: m.at[0], top: m.at[1], width: m.size, display: 'grid', justifyItems: 'center', gap: 6 }}
-            >
-              <Sphere m={{ kind: 'texture', src: m.src, at: [0.5, 0.45], under: '#e9e4df', name: m.name, zoom: 1.6 }} size={m.size} />
-              <span style={{ fontSize: 12, lineHeight: '16px', color: MUTED, whiteSpace: 'nowrap' }}>{m.name}</span>
-            </motion.div>
-          ))}
-        </section>
-
-        {/* ---------- 03 texture: close-ups torn out and layered ---------- */}
-        <section style={{ position: 'relative', height: 580, padding: '56px 20px 0', boxSizing: 'border-box', background: 'var(--bg-default)', clipPath: torn(21, 'both') }}>
+      {/* ---------- 03 texture: close-ups torn out and layered ---------- */}
+      <section style={{ padding: wide ? '80px 0 90px' : '56px 0 0', background: 'var(--bg-default)', clipPath: torn(21, 'both') }}>
+        <div style={{ ...col, position: 'relative', height: wide ? 'auto' : 524 }}>
           {kicker('03 - Texture')}
           {heading('Up close')}
-          {CONCEPT.textures.map((tx, i) => (
-            <motion.div
-              key={tx.name}
-              initial={{ opacity: 0, y: 30, rotate: 0 }}
-              animate={{ opacity: 1, y: 0, rotate: tx.turn }}
-              transition={{ delay: 0.3 + i * 0.08, duration: 0.8, ease }}
-              // 160 wide: turned by up to 4°, every tile still sits inside the 20px margins
-              style={{ position: 'absolute', left: tx.at[0], top: tx.at[1], width: 160, height: 190, zIndex: i }}
-            >
-              <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#fcfaf7', clipPath: torn(30 + i, 'all'), boxShadow: '0 10px 30px rgba(0,0,0,.12)' }}>
-                <img src={asset(tx.src)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </div>
-              <span style={{ position: 'absolute', left: 10, [tx.label]: 12, padding: '3px 9px', borderRadius: 999, background: 'rgba(252,250,247,.9)', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>{tx.name}</span>
-            </motion.div>
-          ))}
-        </section>
+          <div style={wide ? { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 24, marginTop: 36 } : undefined}>
+            {CONCEPT.textures.map((tx, i) => (
+              <motion.div
+                key={tx.name}
+                initial={{ opacity: 0, y: 30, rotate: 0 }}
+                animate={{ opacity: 1, y: 0, rotate: tx.turn }}
+                transition={{ delay: 0.3 + i * 0.08, duration: 0.8, ease }}
+                // on the phone 160 wide: turned by up to 4°, every tile still sits inside the 20px margins
+                style={{
+                  zIndex: i, position: wide ? 'relative' : 'absolute',
+                  ...(wide ? { aspectRatio: '160 / 190', marginTop: [0, 40, 12, 52][i] } : { left: tx.at[0], top: tx.at[1] - 56, width: 160, height: 190 }),
+                }}
+              >
+                <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#fcfaf7', clipPath: torn(30 + i, 'all'), boxShadow: '0 10px 30px rgba(0,0,0,.12)' }}>
+                  <img src={asset(tx.src)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <span style={{ position: 'absolute', left: 10, [tx.label]: 12, padding: '3px 9px', borderRadius: 999, background: 'rgba(252,250,247,.9)', fontSize: wide ? 13 : 12, fontWeight: 500, whiteSpace: 'nowrap' }}>{tx.name}</span>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-        {/* ---------- 04 finish: where the board sits between opposites, said big ---------- */}
-        <section style={{ padding: '30px 20px 60px' }}>
+      {/* ---------- 04 finish: where the board sits between opposites ---------- */}
+      <section style={{ padding: wide ? '60px 0 70px' : '30px 0 60px' }}>
+        <div style={col}>
           {kicker('04 - Finish')}
           {heading('The surface')}
-          <div style={{ display: 'grid', gap: 22, marginTop: 24 }}>
+          <div style={{ display: 'grid', gap: wide ? 28 : 22, marginTop: wide ? 32 : 24, maxWidth: wide ? 760 : undefined }}>
             {AXES.map(([lo, hi], i) => (
               <div key={lo}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, lineHeight: '20px', fontWeight: 600 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: wide ? 18 : 15, lineHeight: '22px', fontWeight: 600 }}>
                   <span style={{ color: surface[i] < 0.5 ? '#111' : 'rgba(17,17,17,.25)' }}>{lo}</span>
                   <span style={{ color: surface[i] >= 0.5 ? '#111' : 'rgba(17,17,17,.25)' }}>{hi}</span>
                 </div>
@@ -294,10 +326,12 @@ export default function DirectionCard({ items, saved, onClose, onSave }: {
               </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ---------- 05 statement: the concept in the user's own words ---------- */}
-        <section style={{ padding: '10px 20px 0' }}>
+      {/* ---------- 05 statement and 06 checklist: side by side on a wide screen ---------- */}
+      <div style={{ ...col, display: 'grid', gridTemplateColumns: wide ? 'minmax(0, 1.2fr) minmax(0, 1fr)' : 'minmax(0, 1fr)', columnGap: 64, rowGap: 40, paddingTop: 10 }}>
+        <section>
           {kicker('05 - Statement')}
           {heading('In your words')}
           <textarea
@@ -305,14 +339,13 @@ export default function DirectionCard({ items, saved, onClose, onSave }: {
             value={statement}
             onChange={(e) => setStatement(e.target.value)}
             placeholder="Write your concept or artist statement: what this is about, and what you want people to feel."
-            rows={6}
-            style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 18, padding: 16, border: 0, outline: 'none', resize: 'vertical', borderRadius: 20, background: 'var(--bg-default)', font: 'inherit', fontSize: 16, lineHeight: '24px', color: '#111' }}
+            rows={wide ? 9 : 6}
+            style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 18, padding: wide ? 20 : 16, border: 0, outline: 'none', resize: 'vertical', borderRadius: 20, background: 'var(--bg-default)', font: 'inherit', fontSize: wide ? 17 : 16, lineHeight: wide ? '26px' : '24px', color: '#111' }}
           />
-          <div style={{ fontSize: 12, color: MUTED, marginTop: 6, textAlign: 'right' }}>{statement.trim() ? `${statement.trim().split(/\s+/).length} words` : 'Saved as you type'}</div>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 6, textAlign: 'right' }}>{(() => { const n = statement.trim() ? statement.trim().split(/\s+/).length : 0; return n ? `${n} ${n === 1 ? 'word' : 'words'}` : 'Saved as you type' })()}</div>
         </section>
 
-        {/* ---------- 06 checklist: what it has to have ---------- */}
-        <section style={{ padding: '40px 20px 0' }}>
+        <section>
           {kicker('06 - Checklist')}
           {heading('Make sure it has')}
           <div style={{ display: 'grid', marginTop: 16 }}>
@@ -351,36 +384,36 @@ export default function DirectionCard({ items, saved, onClose, onSave }: {
           </div>
           <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>{checklist.filter((c) => c.done).length} of {checklist.length} done</div>
         </section>
-
-        {/* ---------- finish: take it with you ---------- */}
-        <section style={{ padding: '40px 20px 140px', display: 'grid', gap: 10 }}>
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={() => {
-              setExporting(true)
-              downloadConceptPdf({
-                title: title.trim() || CONCEPT.title, about: CONCEPT.about, wash: CONCEPT.wash,
-                palette: swatches.map((c, i) => ({ colour: c, name: cap(nameOf(c)), share: SHARE[i] })),
-                materials: CONCEPT.materials.map((m) => ({ name: m.name, src: m.src })),
-                textures: CONCEPT.textures.map((t) => ({ name: t.name, src: t.src })),
-                surface: AXES.map(([lo, hi], i) => ({ lo, hi, at: surface[i] })),
-                statement, checklist,
-              }).finally(() => setExporting(false))
-            }}
-            style={{ height: 52, borderRadius: 999, background: 'var(--bg-default)', color: '#111', fontSize: 16, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-          >
-            <DownloadIcon size={18} /> {exporting ? 'Making the PDF…' : 'Download PDF'}
-          </motion.button>
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={() => setSharing(true)}
-            style={{ height: 52, borderRadius: 999, background: 'var(--bg-inverse)', color: 'var(--bg-canvas)', fontSize: 16, fontWeight: 500 }}
-          >
-            Share
-          </motion.button>
-          {kept2 && <div style={{ fontSize: 12, color: MUTED, textAlign: 'center' }}>Saved to your Studio</div>}
-        </section>
       </div>
+
+      {/* ---------- take it with you ---------- */}
+      <section style={{ ...col, padding: wide ? '56px 0 80px' : '40px 20px 140px', display: wide ? 'flex' : 'grid', justifyContent: 'center', gap: 10 }}>
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={() => {
+            setExporting(true)
+            downloadConceptPdf({
+              title: title.trim() || CONCEPT.title, about: CONCEPT.about, wash: CONCEPT.wash,
+              palette: swatches.map((c, i) => ({ colour: c, name: cap(nameOf(c)), share: SHARE[i] })),
+              materials: CONCEPT.materials.map((m) => ({ name: m.name, src: m.src })),
+              textures: CONCEPT.textures.map((t) => ({ name: t.name, src: t.src })),
+              surface: AXES.map(([lo, hi], i) => ({ lo, hi, at: surface[i] })),
+              statement, checklist,
+            }).finally(() => setExporting(false))
+          }}
+          style={{ height: 52, minWidth: wide ? 240 : undefined, padding: '0 28px', borderRadius: 999, background: 'var(--bg-default)', color: '#111', fontSize: 16, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+        >
+          <DownloadIcon size={18} /> {exporting ? 'Making the PDF…' : 'Download PDF'}
+        </motion.button>
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={() => setSharing(true)}
+          style={{ height: 52, minWidth: wide ? 240 : undefined, padding: '0 28px', borderRadius: 999, background: 'var(--bg-inverse)', color: 'var(--bg-canvas)', fontSize: 16, fontWeight: 500 }}
+        >
+          Share
+        </motion.button>
+        {kept2 && <div style={{ fontSize: 12, color: MUTED, textAlign: 'center', alignSelf: 'center' }}>Saved to your Studio</div>}
+      </section>
     </div>
     <ShareSheet
       open={sharing}
@@ -388,8 +421,8 @@ export default function DirectionCard({ items, saved, onClose, onSave }: {
       hostId="concept-overlay"
       cover={asset(CONCEPT.wash)}
       title={title || 'Concept'}
-      subtitle="Concept card · Ads"
-      link="pin.it/studio/ads/concept"
+      subtitle="Concept card · Organic Forms"
+      link="pin.it/studio/organic-forms/concept"
       note="Anyone with the link can view this concept."
       action="Share concept"
       onSave={() => setKept2(true)}

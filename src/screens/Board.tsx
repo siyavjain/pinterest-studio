@@ -11,6 +11,7 @@ import ShareSheet from '../board/ShareSheet'
 import ExploreSheet from '../board/ExploreSheet'
 import Recommendation from '../board/Recommendation'
 import DirectionCard from '../board/DirectionCard'
+import type { Direction } from '../board/DirectionCard'
 import { loadDirection, saveDirection } from '../board/directions'
 import VoiceNote from '../board/VoiceNote'
 import PieceContent from '../board/Piece'
@@ -35,6 +36,8 @@ import { asset } from '../components/asset'
 import { getFit } from '../components/fit'
 import { useWeb } from '../components/view'
 import type { Shape } from '../board/ingredients'
+import { ME, pack, pull, push, unpack } from '../board/sync'
+import type { Box, Packed, SyncState } from '../board/sync'
 
 type Item = {
   id: string; src: string; x: number; y: number; w: number; h: number; z: number
@@ -152,6 +155,19 @@ const underPiece = (f: { x: number; y: number; w: number; h: number }) =>
   ({ x: Math.min(Math.max(f.x + f.w / 2 - 128, 8), 402 - 264), y: f.y + f.h + 40 })
 const ease = [0.22, 1, 0.36, 1] as const
 
+// Something added on the other device has no place in this layout yet: start pieces have one
+// in each, anything else keeps its spot relative to the middle of the board, scaled between
+// the phone's pieces and the web's 1.4× larger ones.
+const middle = (list: Item[]) => {
+  const b = bounds(list.filter((i) => !i.colour))
+  return { x: b.x + b.w / 2, y: b.y + b.h / 2 }
+}
+const crossOver = (theirs: Box, toWeb: boolean): Box => {
+  const [from, to] = toWeb ? [middle(START), middle(WEB_START)] : [middle(WEB_START), middle(START)]
+  const k = toWeb ? 1.4 : 1 / 1.4
+  return [to.x + (theirs[0] - from.x) * k, to.y + (theirs[1] - from.y) * k, theirs[2] * k, theirs[3] * k]
+}
+
 function bounds(items: Item[]) {
   const x = Math.min(...items.map((i) => i.x)) - 14
   const y = Math.min(...items.map((i) => i.y)) - 14
@@ -208,7 +224,7 @@ function inside([x, y]: [number, number], poly: [number, number][]) {
 }
 
 // the board's project in the Studio library, where its concept card is kept
-const PROJECT = 'Ads'
+const PROJECT = 'Organic Forms' // the same project the phone's home carousel shows
 
 export default function Board({ onBack, openDirection = false, fresh = false }: { onBack: () => void; openDirection?: boolean; fresh?: boolean /* just created: nobody has left a note yet */ }) {
   const web = useWeb()
@@ -366,6 +382,102 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
   }
+
+  // Live sync with the other device (phone ↔ web) through the dev server. What's on the board is
+  // shared; where it sits is per view. Remote changes wait while something is mid-drag here.
+  const view = web ? 'web' : 'phone'
+  const synced = useRef<SyncState | null>(null) // the last state shared, either way
+  const rev = useRef(0)
+  const quiet = useRef(true) // the next change came from the other device (or the first load): don't echo it
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const moving = useRef(false)
+  moving.current = !!(dragging || resizing || movingGroup || wiring || lasso || merging)
+  const local = useRef({ items, notes, nodes, groups, savedDirection })
+  local.current = { items, notes, nodes, groups, savedDirection }
+
+  const share = (): SyncState => {
+    const l = local.current
+    return {
+      items: pack(l.items.map(({ from: _from, ...i }) => i), view, synced.current?.items),
+      notes: pack(l.notes.filter((n) => n.text.trim() || n.replies.length).map(({ id, x, y, text, author, kind, on, fromVoice, replies, teammates }) => ({
+        id, x, y, text, author, kind, on, fromVoice, teammates, replies: replies.map(({ id, author, text }) => ({ id, author, text })),
+      })), view, synced.current?.notes),
+      nodes: pack(l.nodes, view, synced.current?.nodes),
+      groups: l.groups,
+      concepts: { ...synced.current?.concepts, ...(l.savedDirection ? { [PROJECT]: l.savedDirection } : {}) },
+    }
+  }
+  const apply = (s: SyncState) => {
+    const l = local.current
+    const place = (p: Packed<{ id: string; x: number; y: number }>, theirs: Box) => {
+      const host = 'on' in p && (l.items.find((i) => i.id === p.on) ?? (web ? WEB_START : START).find((i) => i.id === p.on))
+      if (host) { const at = web ? besidePiece(host) : underPiece(host); return [at.x, at.y, 0, 0] as Box }
+      const start = (web ? WEB_START : START).find((i) => i.id === p.id)
+      return start ? [start.x, start.y, start.w, start.h] as Box : crossOver(theirs, web)
+    }
+    quiet.current = true
+    setItems(unpack<Item>(s.items, view, l.items, place))
+    setNotes([
+      ...unpack<Note>(s.notes, view, l.notes, place).map((n) => ({ ...n, audio: l.notes.find((m) => m.id === n.id)?.audio })),
+      ...l.notes.filter((n) => !n.text.trim() && !n.replies.length), // a comment still being written here stays
+    ])
+    setNodes(unpack<CreateNodeData>(s.nodes, view, l.nodes, place))
+    setGroups(s.groups as Group[])
+    const concept = s.concepts[PROJECT] as Direction | undefined
+    if (concept && JSON.stringify(concept) !== JSON.stringify(l.savedDirection)) {
+      saveDirection(PROJECT, concept)
+      setSavedDirection(concept)
+    }
+    zTop.current = Math.max(zTop.current, ...s.items.map((i) => (i as unknown as Item).z ?? 0)) + 1
+  }
+
+  // first load: pick up the shared board, or start it (a just-created board starts it afresh)
+  useEffect(() => {
+    let live = true
+    pull().then((doc) => {
+      if (!live || !doc) return
+      rev.current = doc.rev
+      if (doc.state && !fresh) {
+        synced.current = doc.state
+        apply(doc.state)
+      } else {
+        quiet.current = false
+        const s = share()
+        synced.current = s
+        push(s).then((n) => n && (rev.current = n))
+      }
+    })
+    // then keep an eye on the other device
+    const tick = setInterval(async () => {
+      if (moving.current || pending.current) return
+      const doc = await pull()
+      if (!doc || doc.rev <= rev.current || moving.current || pending.current) return
+      rev.current = doc.rev
+      if (doc.by === ME || !doc.state) return
+      synced.current = doc.state
+      apply(doc.state)
+    }, 1000)
+    return () => {
+      live = false
+      clearInterval(tick)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // and share every change made here, a moment after it settles
+  useEffect(() => {
+    if (quiet.current) {
+      quiet.current = false
+      return
+    }
+    if (pending.current) clearTimeout(pending.current)
+    pending.current = setTimeout(() => {
+      pending.current = null
+      if (moving.current) return // letting go shares it
+      const s = share()
+      synced.current = s
+      push(s).then((n) => n && n > rev.current && (rev.current = n))
+    }, 350)
+  }, [items, notes, nodes, groups, savedDirection, !!(dragging || resizing || movingGroup || wiring || lasso || merging)]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // drag a frame: everything in it travels together
   const moveGroup = (ids: string[], dx: number, dy: number) =>
@@ -1535,7 +1647,7 @@ export default function Board({ onBack, openDirection = false, fresh = false }: 
               </span>
             ))}
           </span>
-          <span style={{ fontSize: 18, fontWeight: 600 }}>Ads</span>
+          <span style={{ fontSize: 18, fontWeight: 600 }}>{PROJECT}</span>
           <span className="t-label" style={{ color: 'var(--text-secondary)' }}>14 pins · 3 collaborators</span>
         </div>
       )}

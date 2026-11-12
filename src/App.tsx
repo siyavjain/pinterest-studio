@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import NavBar from './components/NavBar'
 import Home from './screens/Home'
@@ -58,6 +58,17 @@ export default function App() {
     saveView(v)
     setPicked(v)
   }
+  // M flips between the phone and the web (not while typing)
+  useEffect(() => {
+    if (!win.wide) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      if (e.key.toLowerCase() !== 'm' || e.metaKey || e.ctrlKey || e.altKey || t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return
+      pick(view === 'web' ? 'phone' : 'web')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [win.wide, view]) // eslint-disable-line react-hooks/exhaustive-deps
   // drags divide by the phone's scale; the web layout is never scaled
   const fit = view === 'web' ? 1 : win.k
   setFit(fit)
@@ -73,7 +84,7 @@ export default function App() {
     return (
       <ViewContext.Provider value="web">
         <div className="web-app">
-          <WebNav onPhone={() => pick('phone')} />
+          <WebNav />
           <main className="web-main">
             <Board onBack={studio} />
             {/* side panels open over the board's own buttons */}

@@ -282,26 +282,18 @@ export function Toolbar({ tool, onTool, pen, onPen, ink, onInk, width, onWidth, 
 }) {
   const [open, setOpen] = useState(true)
   return (
-    <div onPointerDown={(e) => e.stopPropagation()} style={{ position: 'absolute', left: '50%', bottom: 20, transform: 'translateX(-50%)', zIndex: 47, display: 'flex', alignItems: 'center', gap: 12 }}>
-      {/* the close button folds the bar away; the same spot opens it again */}
-      <motion.button
-        aria-label={open ? 'Hide tools' : 'Show tools'}
-        whileTap={{ scale: 0.9 }}
-        onClick={() => setOpen((o) => !o)}
-        style={{ width: 48, height: 48, borderRadius: 999, background: 'var(--bg-canvas)', boxShadow: '0 6px 20px rgba(0,0,0,.1), 0 0 0 1px rgba(0,0,0,.04)', display: 'grid', placeItems: 'center' }}
-      >
-        {open ? <CloseIcon /> : ICON.pen}
-      </motion.button>
-
+    // the bar sits in the middle; its button stays put in the bottom-right corner, open or closed
+    <>
       <AnimatePresence>
         {open && (
           <motion.div
             key="tools"
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
+            onPointerDown={(e) => e.stopPropagation()}
+            initial={{ opacity: 0, y: 12, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: 12, x: '-50%' }}
             transition={{ duration: 0.3, ease }}
-            style={{ position: 'relative', display: 'flex', gap: 4, padding: 8, borderRadius: 28, background: 'var(--bg-canvas)', boxShadow: '0 12px 36px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.04)' }}
+            style={{ position: 'absolute', left: '50%', bottom: 20, zIndex: 47, display: 'flex', gap: 4, padding: 8, borderRadius: 28, background: 'var(--bg-canvas)', boxShadow: '0 12px 36px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.04)' }}
           >
             <ToolButton label="Select" keyHint="V" on={tool === 'select'} onClick={() => onTool('select')}>{ICON.select}</ToolButton>
             <ToolButton label="Hand" keyHint="H" on={tool === 'hand'} onClick={() => onTool('hand')}>{ICON.hand}</ToolButton>
@@ -321,7 +313,18 @@ export function Toolbar({ tool, onTool, pen, onPen, ink, onInk, width, onWidth, 
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+
+      {/* the close button folds the bar away; the same spot opens it again */}
+      <motion.button
+        aria-label={open ? 'Hide tools' : 'Show tools'}
+        whileTap={{ scale: 0.9 }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => setOpen((o) => !o)}
+        style={{ position: 'absolute', right: 20, bottom: 28, zIndex: 47, width: 48, height: 48, borderRadius: 999, background: 'var(--bg-canvas)', boxShadow: '0 6px 20px rgba(0,0,0,.1), 0 0 0 1px rgba(0,0,0,.04)', display: 'grid', placeItems: 'center' }}
+      >
+        {open ? <CloseIcon /> : ICON.pen}
+      </motion.button>
+    </>
   )
 }
 

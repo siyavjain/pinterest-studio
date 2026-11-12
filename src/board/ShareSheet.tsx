@@ -44,7 +44,7 @@ function Row({ title, items }: { title: string; items: { label: string; node: Re
 }
 
 export default function ShareSheet({
-  open, onClose, cover, title = 'Ads', subtitle = '14 pins · 3 collaborators', link = 'pin.it/studio/ads',
+  open, onClose, cover, title = 'Organic Forms', subtitle = '14 pins · 3 collaborators', link = 'pin.it/studio/organic-forms',
   note = 'Anyone with the link can view. Collaborators can add pins.', action = 'Share board', onSave, hostId,
 }: {
   open: boolean
