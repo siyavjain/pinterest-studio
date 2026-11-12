@@ -9,6 +9,7 @@ import Library from './screens/Library'
 import Notifications from './screens/Notifications'
 import { setFit } from './components/fit'
 import WebNav from './components/WebNav'
+import InstallHint from './components/InstallHint'
 import { ViewContext, WIDE, saveView, savedView } from './components/view'
 import type { View } from './components/view'
 
@@ -21,17 +22,22 @@ const MARGIN = 40
 const onPhone = () => innerWidth <= 500
 
 /** Scale the phone down (never up) so the whole frame fits the window with a margin. On a real
- *  phone the bare screen scales to fill it, so layouts hold on every size of phone. */
+ *  phone the bare screen scales to the phone's width and takes whatever height is left, so it
+ *  fills the display edge to edge. */
 const measure = () =>
   onPhone()
-    ? Math.min(innerWidth / SCREEN.w, innerHeight / SCREEN.h)
+    ? innerWidth / SCREEN.w
     : Math.min(1, (innerWidth - MARGIN * 2) / DEVICE.w, (innerHeight - MARGIN * 2) / DEVICE.h)
+const read = () => {
+  const k = measure()
+  return { k, wide: innerWidth >= WIDE, phone: onPhone(), h: onPhone() ? innerHeight / k : SCREEN.h }
+}
 
-/** The window's fit for the phone, and whether it's wide enough for the web layout. */
+/** The window's fit for the phone, its screen height, and whether it's wide enough for the web layout. */
 function useWindow() {
-  const [w, setW] = useState(() => ({ k: measure(), wide: innerWidth >= WIDE, phone: onPhone() }))
+  const [w, setW] = useState(read)
   useLayoutEffect(() => {
-    const onResize = () => setW({ k: measure(), wide: innerWidth >= WIDE, phone: onPhone() })
+    const onResize = () => setW(read())
     addEventListener('resize', onResize)
     return () => removeEventListener('resize', onResize)
   }, [])
@@ -115,6 +121,7 @@ export default function App() {
   return (
     <ViewContext.Provider value="phone">
     <div className="stage">
+      {win.phone && <InstallHint />}
       {win.wide && (
         <motion.button
           whileTap={{ scale: 0.95 }}
@@ -125,9 +132,9 @@ export default function App() {
         </motion.button>
       )}
       {/* the box takes the scaled size so the page never scrolls; the device scales inside it */}
-      <div className="fit" style={{ width: (win.phone ? SCREEN : DEVICE).w * fit, height: (win.phone ? SCREEN : DEVICE).h * fit }}>
+      <div className="fit" style={win.phone ? { width: SCREEN.w * fit, height: win.h * fit } : { width: DEVICE.w * fit, height: DEVICE.h * fit }}>
       <div className="device" style={{ transform: `scale(${fit})` }}>
-      <div className="phone">
+      <div className="phone" style={win.phone ? { height: win.h } : undefined}>
         <AnimatePresence mode={screen === 'extract' ? 'sync' : 'wait'}>
           <motion.div key={screen} className="screen" {...(screen === 'extract' ? pour : fade)}>
             {screen === 'home' && <Home onTake={() => setScreen('extract')} />}
