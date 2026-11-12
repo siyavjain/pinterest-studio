@@ -20,7 +20,11 @@ export type Doc = { rev: number; by: string; state: SyncState | null }
 /** This tab, so it can ignore its own writes when they come back. */
 export const ME = Math.random().toString(36).slice(2)
 
+// only the dev server has the store; the shared build gives each visitor their own board
+const LIVE = import.meta.env.DEV
+
 export async function pull(): Promise<Doc | null> {
+  if (!LIVE) return null
   try {
     const r = await fetch('/api/sync', { cache: 'no-store' })
     return r.ok ? await r.json() : null
@@ -30,6 +34,7 @@ export async function pull(): Promise<Doc | null> {
 }
 
 export async function push(state: SyncState): Promise<number | null> {
+  if (!LIVE) return null
   try {
     const r = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ by: ME, state }) })
     return r.ok ? (await r.json()).rev : null

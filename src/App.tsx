@@ -6,6 +6,7 @@ import Extract from './screens/Extract'
 import Loading from './screens/Loading'
 import Board from './screens/Board'
 import Library from './screens/Library'
+import Notifications from './screens/Notifications'
 import { setFit } from './components/fit'
 import WebNav from './components/WebNav'
 import { ViewContext, WIDE, saveView, savedView } from './components/view'
@@ -13,19 +14,24 @@ import type { View } from './components/view'
 
 export type Screen = 'home' | 'extract' | 'loading' | 'board' | 'library'
 
-// the phone in its frame, and the breathing room kept around it
+// the phone in its frame, and the breathing room kept around it; on a real phone, just the screen
 const DEVICE = { w: 402 + 24, h: 874 + 24 }
+const SCREEN = { w: 402, h: 874 }
 const MARGIN = 40
+const onPhone = () => innerWidth <= 500
 
-/** Scale the phone down (never up) so the whole frame fits the window with a margin. */
+/** Scale the phone down (never up) so the whole frame fits the window with a margin. On a real
+ *  phone the bare screen scales to fill it, so layouts hold on every size of phone. */
 const measure = () =>
-  innerWidth <= 500 ? 1 : Math.min(1, (innerWidth - MARGIN * 2) / DEVICE.w, (innerHeight - MARGIN * 2) / DEVICE.h)
+  onPhone()
+    ? Math.min(innerWidth / SCREEN.w, innerHeight / SCREEN.h)
+    : Math.min(1, (innerWidth - MARGIN * 2) / DEVICE.w, (innerHeight - MARGIN * 2) / DEVICE.h)
 
 /** The window's fit for the phone, and whether it's wide enough for the web layout. */
 function useWindow() {
-  const [w, setW] = useState(() => ({ k: measure(), wide: innerWidth >= WIDE }))
+  const [w, setW] = useState(() => ({ k: measure(), wide: innerWidth >= WIDE, phone: onPhone() }))
   useLayoutEffect(() => {
-    const onResize = () => setW({ k: measure(), wide: innerWidth >= WIDE })
+    const onResize = () => setW({ k: measure(), wide: innerWidth >= WIDE, phone: onPhone() })
     addEventListener('resize', onResize)
     return () => removeEventListener('resize', onResize)
   }, [])
@@ -69,6 +75,18 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [win.wide, view]) // eslint-disable-line react-hooks/exhaustive-deps
+  // N on Studio home plays the live notifications: the phone sleeps, then a teammate's note wakes it
+  const [notify, setNotify] = useState(false)
+  useEffect(() => {
+    if (view !== 'phone' || screen !== 'library' || notify) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      if (e.key.toLowerCase() !== 'n' || e.metaKey || e.ctrlKey || e.altKey || t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return
+      setNotify(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [view, screen, notify])
   // drags divide by the phone's scale; the web layout is never scaled
   const fit = view === 'web' ? 1 : win.k
   setFit(fit)
@@ -107,7 +125,7 @@ export default function App() {
         </motion.button>
       )}
       {/* the box takes the scaled size so the page never scrolls; the device scales inside it */}
-      <div className="fit" style={{ width: DEVICE.w * fit, height: DEVICE.h * fit }}>
+      <div className="fit" style={{ width: (win.phone ? SCREEN : DEVICE).w * fit, height: (win.phone ? SCREEN : DEVICE).h * fit }}>
       <div className="device" style={{ transform: `scale(${fit})` }}>
       <div className="phone">
         <AnimatePresence mode={screen === 'extract' ? 'sync' : 'wait'}>
@@ -121,7 +139,7 @@ export default function App() {
             {screen === 'library' && <Library onOpen={(_, direction) => openProject(direction)} onNew={() => setScreen('home')} />}
           </motion.div>
         </AnimatePresence>
-        <NavBar active="studio" brand={screen !== 'library'} onHome={() => setScreen('home')} onStudio={studio} />
+        <NavBar active="studio" brand onHome={() => setScreen('home')} onStudio={studio} />
         <div id="overlay" style={{ position: 'absolute', inset: 0, zIndex: 40, pointerEvents: 'none' }} />
         <div className="chrome" aria-hidden>
           <div className="status">
@@ -131,6 +149,9 @@ export default function App() {
           <div className="island" />
           <div className="home-bar" />
         </div>
+        <AnimatePresence>
+          {notify && <Notifications onClose={() => setNotify(false)} onOpenBoard={() => { setNotify(false); openProject() }} />}
+        </AnimatePresence>
       </div>
       </div>
       </div>

@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react'
 
 // The pointer, drawn as a see-through red dot so it reads clearly in recordings and on a projector
 // without hiding what's under it.
-// Only on mouse and trackpad: a phone on touch keeps its own behaviour. The system cursor is
-// hidden in index.css under the same (pointer: fine) query.
+// Only on mouse and trackpad: a phone on touch keeps its own behaviour. While it's mounted the
+// system cursor is hidden (the red-cursor class in index.css).
 
 const SIZE = 22
 
@@ -14,6 +14,8 @@ export default function Cursor() {
   useEffect(() => {
     if (!matchMedia('(pointer: fine)').matches) return
     const el = pos.current!
+    const root = document.documentElement
+    root.classList.add('red-cursor') // hides the system cursor (index.css)
     let shown = false
     // the position follows the pointer exactly; only the press squeeze is eased
     const move = (e: PointerEvent) => {
@@ -36,6 +38,7 @@ export default function Cursor() {
     addEventListener('selectstart', noNative, true)
     document.documentElement.addEventListener('pointerleave', leave)
     return () => {
+      root.classList.remove('red-cursor')
       removeEventListener('pointermove', move)
       removeEventListener('pointerdown', press)
       removeEventListener('pointerup', release)

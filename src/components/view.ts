@@ -9,6 +9,9 @@ export const useWeb = () => useContext(ViewContext) === 'web'
 export const WIDE = 900
 const KEY = 'studio-view'
 export const savedView = (): View | null => {
+  // a shared link can name its view (?view=phone or ?view=web), and that wins
+  const asked = new URLSearchParams(location.search).get('view')
+  if (asked === 'phone' || asked === 'web') return asked
   try {
     return localStorage.getItem(KEY) as View | null
   } catch {

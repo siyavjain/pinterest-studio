@@ -7,6 +7,7 @@ import Cursor from './components/Cursor'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
-    <Cursor />
+    {/* the red presentation cursor is for recording locally; visitors keep their own */}
+    {import.meta.env.DEV && <Cursor />}
   </StrictMode>,
 )

@@ -14,7 +14,7 @@ export default function Face({ who, size, ring }: { who: string; size: number; r
       aria-label={who}
       style={{
         width: size, height: size, borderRadius: 999, flexShrink: 0, display: 'block', boxSizing: 'border-box',
-        backgroundImage: `url(${you ? asset('p3-avatar') : `/img/${who}.png`})`,
+        backgroundImage: `url(${asset(you ? 'p3-avatar' : who)})`,
         // the labelled files are as wide as their circle: fit the width, keep the top
         backgroundSize: you ? 'cover' : `${size}px auto`,
         backgroundPosition: you ? 'center' : 'top center',

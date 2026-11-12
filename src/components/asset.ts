@@ -3,6 +3,8 @@
  *  (a photo picked from the device) is passed straight through. */
 export function asset(name: string) {
   if (/^(blob:|data:|https?:)/.test(name)) return name
-  if (/\.\w+$/.test(name)) return `/img/${name}`
-  return /^p\d-/.test(name) ? `/home/assets/${name}.png` : `/img/${name}.png`
+  // BASE_URL is "/" in dev and the hosting subpath in the shared build
+  const base = import.meta.env.BASE_URL
+  if (/\.\w+$/.test(name)) return `${base}img/${name}`
+  return /^p\d-/.test(name) ? `${base}home/assets/${name}.png` : `${base}img/${name}.png`
 }

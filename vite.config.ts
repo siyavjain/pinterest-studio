@@ -46,6 +46,8 @@ function sync(): Plugin {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
+// the shared build is served from GitHub Pages at /pinterest-studio/
+export default defineConfig(({ command, isPreview }) => ({
+  base: command === 'build' || isPreview ? '/pinterest-studio/' : '/',
   plugins: [react(), sync()],
-})
+}))

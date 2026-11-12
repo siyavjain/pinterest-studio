@@ -34,8 +34,8 @@
 html, body, #root { height: 100%; margin: 0; }
 button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
 img { display: block; user-select: none; -webkit-user-drag: none; }
-/* the red dot in components/Cursor.tsx stands in for the system cursor on mouse and trackpad */
-@media (pointer: fine) { *, *::before, *::after { cursor: none !important; } }
+/* the red dot in components/Cursor.tsx stands in for the system cursor on mouse and trackpad (dev only) */
+@media (pointer: fine) { .red-cursor, .red-cursor *, .red-cursor *::before, .red-cursor *::after { cursor: none !important; } }
 
 /* Phone stage: real size inside a device frame on desktop, full screen on a phone */
 .stage {
@@ -74,12 +74,12 @@ img { display: block; user-select: none; -webkit-user-drag: none; }
 .island { position: absolute; top: 11px; left: 50%; width: 124px; height: 36px; margin-left: -62px; border-radius: 999px; background: #000; }
 .status { position: absolute; top: 0; left: 0; right: 0; height: 54px; display: flex; align-items: center; justify-content: space-between; padding: 4px 34px 0 50px; font-size: 16px; font-weight: 600; color: var(--text-primary); }
 .home-bar { position: absolute; bottom: 8px; left: 50%; width: 140px; height: 5px; margin-left: -70px; border-radius: 999px; background: #000; opacity: 0.85; }
+/* on a real phone: no device frame, and the 402×874 screen scales to fit (App measures it) so
+   every screen keeps its layout on smaller and larger phones alike */
 @media (max-width: 500px) {
-  .stage { display: block; background: none; }
-  .fit { width: auto !important; height: auto !important; }
-  .device { position: relative; transform: none !important; }
+  .stage { height: 100dvh; background: var(--bg-canvas); }
   .device { padding: 0; border-radius: 0; background: none; box-shadow: none; }
-  .phone { width: 100vw; height: 100dvh; border-radius: 0; }
+  .phone { border-radius: 0; }
   .chrome { display: none; } /* the real phone has its own */
 }
 
