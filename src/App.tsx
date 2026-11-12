@@ -21,16 +21,27 @@ const SCREEN = { w: 402, h: 874 }
 const MARGIN = 40
 const onPhone = () => innerWidth <= 500
 
-/** Scale the phone down (never up) so the whole frame fits the window with a margin. On a real
- *  phone the bare screen scales to the phone's width and takes whatever height is left, so it
- *  fills the display edge to edge. */
-const measure = () =>
-  onPhone()
-    ? innerWidth / SCREEN.w
-    : Math.min(1, (innerWidth - MARGIN * 2) / DEVICE.w, (innerHeight - MARGIN * 2) / DEVICE.h)
+// on a real phone the device draws its own status bar, so the design's status band is cropped off
+const STATUS = 54
+// the shortest screen the layouts hold at; anything shorter scales down to it instead
+const MIN_H = 862
+
+/** Desktop: scale the framed phone down (never up) to fit the window with a margin.
+ *  Real phone: the screen fills the width and takes the phone's whole height (minus the status
+ *  band it no longer needs); a very short phone scales down to fit MIN_H instead. */
 const read = () => {
-  const k = measure()
-  return { k, wide: innerWidth >= WIDE, phone: onPhone(), h: onPhone() ? innerHeight / k : SCREEN.h }
+  const wide = innerWidth >= WIDE
+  if (!onPhone()) {
+    const k = Math.min(1, (innerWidth - MARGIN * 2) / DEVICE.w, (innerHeight - MARGIN * 2) / DEVICE.h)
+    return { k, wide, phone: false, h: SCREEN.h }
+  }
+  let k = innerWidth / SCREEN.w
+  let h = innerHeight / k + STATUS
+  if (h < MIN_H) {
+    k = innerHeight / (MIN_H - STATUS)
+    h = MIN_H
+  }
+  return { k, wide, phone: true, h }
 }
 
 /** The window's fit for the phone, its screen height, and whether it's wide enough for the web layout. */
@@ -132,8 +143,8 @@ export default function App() {
         </motion.button>
       )}
       {/* the box takes the scaled size so the page never scrolls; the device scales inside it */}
-      <div className="fit" style={win.phone ? { width: SCREEN.w * fit, height: win.h * fit } : { width: DEVICE.w * fit, height: DEVICE.h * fit }}>
-      <div className="device" style={{ transform: `scale(${fit})` }}>
+      <div className="fit" style={win.phone ? { width: SCREEN.w * fit, height: (win.h - STATUS) * fit } : { width: DEVICE.w * fit, height: DEVICE.h * fit }}>
+      <div className="device" style={{ transform: win.phone ? `translateY(${-STATUS * fit}px) scale(${fit})` : `scale(${fit})` }}>
       <div className="phone" style={win.phone ? { height: win.h } : undefined}>
         <AnimatePresence mode={screen === 'extract' ? 'sync' : 'wait'}>
           <motion.div key={screen} className="screen" {...(screen === 'extract' ? pour : fade)}>

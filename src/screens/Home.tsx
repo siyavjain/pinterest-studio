@@ -218,14 +218,16 @@ export default function Home({ onTake }: { onTake: () => void }) {
       </motion.div>
 
       {/* project info */}
-      <div style={{ position: 'absolute', top: 514, left: CENTRE - 201, width: 402, textAlign: 'center' }}>
+      {/* the info and welcome hang from the bottom (874 high in the design), so on a shorter or
+          taller phone they stay just above the nav bar */}
+      <div style={{ position: 'absolute', top: 'calc(100% - 360px)', left: CENTRE - 201, width: 402, textAlign: 'center' }}>
         {PROJECTS.map((proj, i) => (
           <Info key={proj.name} i={i} project={proj} pos={pos} hidden={taking} />
         ))}
       </div>
 
       {/* welcome */}
-      <motion.div animate={{ opacity: taking ? 0 : 1 }} style={{ position: 'absolute', top: 588, left: 8, width: 386, display: 'grid', gap: 8, textAlign: 'center' }}>
+      <motion.div animate={{ opacity: taking ? 0 : 1 }} style={{ position: 'absolute', top: 'calc(100% - 286px)', left: 8, width: 386, display: 'grid', gap: 8, textAlign: 'center' }}>
         <h1 style={{ margin: 0, fontSize: 36, lineHeight: '44px', fontWeight: 600, color: 'var(--text-primary)' }}>Welcome to<br />Pinterest Studio!</h1>
         <p className="t-body" style={{ margin: 0 }}>
           Your creative space to discover inspiration,<br />bring ideas to life, and take them beyond the Pin.
